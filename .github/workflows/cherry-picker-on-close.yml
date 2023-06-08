@@ -1,6 +1,6 @@
 name: cherry-picker-on-close
 on:
-  issues:
+  pull_request:
     types: [closed]
 permissions:
   contents: read
