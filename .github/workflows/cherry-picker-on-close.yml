@@ -1,0 +1,19 @@
+name: cherry-picker-on-close
+on:
+  issues:
+    types: [closed]
+permissions:
+  contents: read
+
+jobs:
+  cherry-pick-on-close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if cherry-pickable
+        uses: iancha1992/continuous-integration/actions/cherry-picker@release_test
+
+
+    
+
+
+
