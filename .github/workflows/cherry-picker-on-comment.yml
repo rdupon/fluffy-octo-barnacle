@@ -8,8 +8,8 @@ on:
   # issue:
   #   types:
   #     [created]
-  issue:
-    types: [created]
+  issues:
+    types: [opened]
 
 
 jobs:
