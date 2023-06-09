@@ -8,7 +8,7 @@ on:
   # issue:
   #   types:
   #     [created]
-  issue_comment:
+  issue:
     types: [created]
 
 
