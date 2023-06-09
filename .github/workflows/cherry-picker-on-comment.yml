@@ -23,7 +23,7 @@ jobs:
       - name: Logging github event
         run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run helper
-        uses: iancha1992/continuous-integration/actions/release-helper@release_test # master
+        uses: iancha1992/continuous-integration/actions/cherry-picker/on-comment@release_test # master
         with:
           token: ${{ secrets.BAZEL_IO_TOKEN }}
 
