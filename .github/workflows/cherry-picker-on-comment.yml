@@ -1,0 +1,27 @@
+name: cherry-picker-on-comment
+
+on:
+  # workflow_run:
+  #   workflows: ["release-helper"]
+  #   types:
+  #     - completed
+  # issue:
+  #   types:
+  #     [created]
+  issue_comment:
+    types: [created]
+
+  
+
+jobs:
+  testing:
+    if: startsWith(github.event.comment.body, 'Forked from https://github.com/iancha1992/bazel/pull/')
+    runs-on: ubuntu-latest
+    # permissions:
+    #   issues: write
+    steps:
+      - name: Run helper
+        uses: iancha1992/continuous-integration/actions/release-helper@release_test # master
+        with:
+          token: ${{ secrets.BAZEL_IO_TOKEN }}
+
