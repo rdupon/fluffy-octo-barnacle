@@ -14,7 +14,7 @@ on:
 
 jobs:
   testing:
-    if: startsWith(github.event.comment.body, 'Forked from https://github.com/iancha1992/bazel/pull/')
+    # if: startsWith(github.event.comment.body, 'Forked from https://github.com/iancha1992/bazel/pull/')
     runs-on: ubuntu-latest
     # permissions:
     #   issues: write
