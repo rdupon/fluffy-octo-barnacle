@@ -19,6 +19,9 @@ jobs:
     # permissions:
     #   issues: write
     steps:
+      - uses: actions/checkout@v2
+      - name: Logging github event
+        run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run helper
         uses: iancha1992/continuous-integration/actions/release-helper@release_test # master
         with:
