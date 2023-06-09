@@ -18,6 +18,6 @@ jobs:
           egress-policy: audit
 
       - name: Run helper
-        uses: iancha1992/continuous-integration/actions/release-helper@release_testss # master
+        uses: iancha1992/continuous-integration/actions/release-helper@release_test # master
         with:
           token: ${{ secrets.BAZEL_IO_TOKEN }}
