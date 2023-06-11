@@ -14,7 +14,7 @@ on:
 
 jobs:
   testing:
-    if: startsWith(github.event.issue.body, 'Forked from #')
+    if: startsWith(github.event.issue.body, 'Forked from')
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
