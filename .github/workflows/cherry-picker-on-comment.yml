@@ -16,8 +16,6 @@ jobs:
   testing:
     if: startsWith(github.event.issue.body, 'Forked from #')
     runs-on: ubuntu-latest
-    # permissions:
-    #   issues: write
     steps:
       - uses: actions/checkout@v2
       - name: Logging github event
