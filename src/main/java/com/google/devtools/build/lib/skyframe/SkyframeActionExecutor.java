@@ -83,6 +83,7 @@ import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
+import com.google.devtools.build.lib.events.EventKind;
 import com.google.devtools.build.lib.events.ExtendedEventHandler;
 import com.google.devtools.build.lib.events.Reporter;
 import com.google.devtools.build.lib.profiler.Profiler;
@@ -381,11 +382,13 @@ public final class SkyframeActionExecutor {
   }
 
   private void updateActionFileSystemContext(
+      Action action,
       FileSystem actionFileSystem,
       Environment env,
       MetadataInjector metadataInjector,
       ImmutableMap<Artifact, ImmutableList<FilesetOutputSymlink>> filesets) {
-    outputService.updateActionFileSystemContext(actionFileSystem, env, metadataInjector, filesets);
+    outputService.updateActionFileSystemContext(
+        action, actionFileSystem, env, metadataInjector, filesets);
   }
 
   void executionOver() {
@@ -488,7 +491,8 @@ public final class SkyframeActionExecutor {
       boolean hasDiscoveredInputs)
       throws ActionExecutionException, InterruptedException {
     if (actionFileSystem != null) {
-      updateActionFileSystemContext(actionFileSystem, env, metadataHandler, expandedFilesets);
+      updateActionFileSystemContext(
+          action, actionFileSystem, env, metadataHandler, expandedFilesets);
     }
 
     ActionExecutionContext actionExecutionContext =
@@ -833,6 +837,7 @@ public final class SkyframeActionExecutor {
             threadStateReceiverFactory.apply(actionLookupData));
     if (actionFileSystem != null) {
       updateActionFileSystemContext(
+          action,
           actionFileSystem,
           env,
           THROWING_METADATA_INJECTOR_FOR_ACTIONFS,
@@ -1118,6 +1123,8 @@ public final class SkyframeActionExecutor {
         throws LostInputsActionExecutionException, InterruptedException {
       ActionResult result;
       try (SilentCloseable c = profiler.profile(ProfilerTask.INFO, "Action.execute")) {
+        checkForUnsoundDirectoryInputs(action, actionExecutionContext.getInputMetadataProvider());
+
         result = action.execute(actionExecutionContext);
 
         // An action's result (or intermediate state) may have been affected by lost inputs. If an
@@ -1502,7 +1509,7 @@ public final class SkyframeActionExecutor {
    * Validates that all action outputs were created or intentionally omitted. This can result in
    * chmod calls on the output files; see {@link ActionMetadataHandler}.
    *
-   * @return false if some outputs are missing, true - otherwise.
+   * @return false if some outputs are missing or invalid, true - otherwise.
    */
   private boolean checkOutputs(
       Action action,
@@ -1519,6 +1526,10 @@ public final class SkyframeActionExecutor {
         if (!outputMetadataStore.artifactOmitted(output)) {
           try {
             FileArtifactValue metadata = outputMetadataStore.getOutputMetadata(output);
+
+            if (!checkForUnsoundDirectoryOutput(action, output, metadata)) {
+              return false;
+            }
 
             addOutputToMetrics(
                 output,
@@ -1589,6 +1600,67 @@ public final class SkyframeActionExecutor {
         outputArtifactsFromActionCache.accumulate(treeArtifactValue);
       }
     }
+  }
+
+  private void checkForUnsoundDirectoryInputs(Action action, InputMetadataProvider metadataProvider)
+      throws ActionExecutionException {
+    if (TrackSourceDirectoriesFlag.trackSourceDirectories()) {
+      return;
+    }
+
+    if (action.getMnemonic().equals("FilesetTraversal")) {
+      // Omit warning for filesets (b/1437948).
+      return;
+    }
+
+    // Report "directory dependency checking" warning only for non-generated directories (generated
+    // ones will have been reported earlier, in the checkForUnsoundDirectoryOutput call for the
+    // respective producing action).
+    for (Artifact input : action.getMandatoryInputs().toList()) {
+      // Assume that if the file did not exist, we would not have gotten here.
+      try {
+        if (input.isSourceArtifact()
+            && metadataProvider.getInputMetadata(input).getType().isDirectory()) {
+          // TODO(ulfjack): What about dependency checking of special files?
+          String ownerString = action.getOwner().getLabel().toString();
+          reporter.handle(
+              Event.warn(
+                      action.getOwner().getLocation(),
+                      String.format(
+                          "input '%s' to %s is a directory; "
+                              + "dependency checking of directories is unsound",
+                          input.prettyPrint(), ownerString))
+                  .withTag(ownerString));
+        }
+      } catch (IOException e) {
+        throw ActionExecutionException.fromExecException(
+            new EnvironmentalExecException(
+                e, FailureDetails.Execution.Code.INPUT_DIRECTORY_CHECK_IO_EXCEPTION),
+            action);
+      }
+    }
+  }
+
+  private boolean checkForUnsoundDirectoryOutput(
+      Action action, Artifact output, FileArtifactValue metadata) {
+    boolean success = true;
+    if (!output.isDirectory() && !output.isSymlink() && metadata.getType().isDirectory()) {
+      boolean asError = options.getOptions(CoreOptions.class).disallowUnsoundDirectoryOutputs;
+      String ownerString = action.getOwner().getLabel().toString();
+      reporter.handle(
+          Event.of(
+                  asError ? EventKind.ERROR : EventKind.WARNING,
+                  action.getOwner().getLocation(),
+                  String.format(
+                      "output '%s' of %s is a directory; "
+                          + "dependency checking of directories is unsound",
+                      output.prettyPrint(), ownerString))
+              .withTag(ownerString));
+      if (asError) {
+        success = false;
+      }
+    }
+    return success;
   }
 
   /**
