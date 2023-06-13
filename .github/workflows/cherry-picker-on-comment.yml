@@ -13,7 +13,7 @@ on:
 
 jobs:
   testing:
-    if: startsWith(github.event.issue.body, 'Forked from') && (github.event.issue.user.login == 'iancha1992')
+    if: startsWith(github.event.issue.body, 'Forked from') && (github.event.issue.user.login == 'iancha1992a')
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
