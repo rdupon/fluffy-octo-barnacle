@@ -2,8 +2,9 @@ name: cherry-picker-on-close
 
 on:
   pull_request:
-    branches: []
-    types: [closed]
+    branches:
+      - iancha_test2
+    # types: [closed]
 
 jobs:
   cherry-picker-on-close:
