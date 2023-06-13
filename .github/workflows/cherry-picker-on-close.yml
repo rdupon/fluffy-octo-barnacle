@@ -1,0 +1,21 @@
+name: cherry-picker-on-close
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cherry-pick-on-close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6b3083af2869dc3314a0257a42f4af696cc79ba3 # v2.3.1
+        with:
+          egress-policy: audit
+      - name: Logging github event
+        run: echo '${{ toJSON(github.event) }}' | jq
+      - name: Run cherrypicker on close
+        uses: iancha1992/continuous-integration/actions/cherry-picker/on-close@release_test # master
+        with:
+          token: ${{ secrets.BAZEL_IO_TOKEN }}
+      
