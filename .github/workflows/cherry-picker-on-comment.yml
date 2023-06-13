@@ -1,13 +1,6 @@
 name: cherry-picker-on-comment
 
 on:
-  # workflow_run:
-  #   workflows: ["release-helper"]
-  #   types:
-  #     - completed
-  # issue:
-  #   types:
-  #     [created]
   issues:
     types: [milestoned]
 
@@ -22,8 +15,7 @@ jobs:
           egress-policy: audit
       - name: Logging github event
         run: echo '${{ toJSON(github.event) }}' | jq
-      - name: Run helper
+      - name: Run cherrypicker on comment
         uses: iancha1992/continuous-integration/actions/cherry-picker/on-comment@release_test # master
         with:
           token: ${{ secrets.BAZEL_IO_TOKEN }}
-
