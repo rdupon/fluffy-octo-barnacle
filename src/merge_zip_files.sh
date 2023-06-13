@@ -42,8 +42,6 @@
 # dir1/a1.cc
 # dir2/b1.cc
 
-echo "hihi"
-
 set -euo pipefail
 
 directory_prefix="$1"; shift
