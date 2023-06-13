@@ -9,8 +9,7 @@ on:
   #   types:
   #     [created]
   issues:
-    types: [opened]
-
+    types: [milestoned]
 
 jobs:
   testing:
