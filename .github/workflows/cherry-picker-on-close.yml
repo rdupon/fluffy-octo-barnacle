@@ -2,19 +2,19 @@ name: cherry-picker-on-close
 
 on:
   pull_request:
-    branches:
-      - iancha_test2
-    # types: [closed]
+    # branches:
+    #   - iancha_test2
+    types: [closed]
 
 jobs:
   cherry-picker-on-close:
     # if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@6b3083af2869dc3314a0257a42f4af696cc79ba3 # v2.3.1
-        with:
-          egress-policy: audit
+      # - name: Harden Runner
+      #   uses: step-security/harden-runner@6b3083af2869dc3314a0257a42f4af696cc79ba3 # v2.3.1
+      #   with:
+      #     egress-policy: audit
       - name: Logging github event
         run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run cherrypicker on close
