@@ -17,6 +17,6 @@ jobs:
         run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run cherrypicker on close
         uses: iancha1992/continuous-integration/actions/cherry-picker/on-close@release_test # master
-        # with:
-        #   token: ${{ secrets.BAZEL_IO_TOKEN }}
+        with:
+          token: ${{ secrets.BAZEL_IO_TOKEN }}
       
