@@ -2,8 +2,7 @@ name: cherry-picker-on-close
 
 on:
   pull_request:
-    types:
-      - closed
+    types: [closed]
 
 jobs:
   cherry-pick-on-close:
