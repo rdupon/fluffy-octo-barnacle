@@ -2,10 +2,11 @@ name: cherry-picker-on-close
 
 on:
   pull_request:
+    branches: []
     types: [closed]
 
 jobs:
-  cherry-pick-on-close:
+  cherry-picker-on-close:
     # if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
