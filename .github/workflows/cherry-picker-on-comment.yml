@@ -2,7 +2,7 @@ name: cherry-picker-on-comment
 
 on:
   issues:
-    types: [milestoneds]
+    types: [milestoned]
 
 jobs:
   cherry-picker-on-comment:
