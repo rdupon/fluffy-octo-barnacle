@@ -1,6 +1,6 @@
 # [Bazel](https://bazel.build)
 
-*{Fast, Correct} - Choose two*.       
+*{Fast, Correct} - Choose t.    wo*.       
 
 Build and test software of any size, quickly and reliably.
 
