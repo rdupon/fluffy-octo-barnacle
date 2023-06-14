@@ -2,8 +2,7 @@ name: cherry-picker-on-close
 
 on:
   pull_request:
-    # branches:
-    #   - iancha_test2
+    # branches: [master]
     types: [closed]
 
 jobs:
@@ -18,7 +17,7 @@ jobs:
       - name: Logging github event
         run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run cherrypicker on close
-        uses: iancha1992/continuous-integration/actions/cherry-picker/on-close@release_test # master
+        uses: iancha1992/continuous-integration/actions/cherry-picker/on-comment@release_test # master
         with:
           token: ${{ secrets.BAZEL_IO_TOKEN }}
-      
+          triggered-on: closed

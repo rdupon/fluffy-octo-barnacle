@@ -19,3 +19,4 @@ jobs:
         uses: iancha1992/continuous-integration/actions/cherry-picker/on-comment@release_test # master
         with:
           token: ${{ secrets.BAZEL_IO_TOKEN }}
+          triggered-on: commented
