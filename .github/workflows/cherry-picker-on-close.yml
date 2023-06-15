@@ -1,9 +1,12 @@
 name: cherry-picker-on-close
 
 on:
-  pull_request:
+  # pull_request:
     # branches: [master]
-    types: [closed]
+    # types: [closed]
+  push:
+    branches: [release_test]
+
 
 jobs:
   cherry-picker-on-close:
