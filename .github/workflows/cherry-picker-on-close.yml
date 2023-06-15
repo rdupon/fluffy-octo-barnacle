@@ -10,7 +10,7 @@ on:
 
 jobs:
   cherry-picker-on-close:
-    # if: github.event.pull_request.merged == true
+    if: github.event.pusher.name == 'hiya'
     runs-on: ubuntu-latest
     steps:
       # - name: Harden Runner
