@@ -1,16 +1,17 @@
 name: cherry-picker-on-close
 
 on:
-  # pull_request:
+  pull_request:
     # branches: [master]
-    # types: [closed]
-  push:
-    branches: [ release_test, 'iancha_test[0-9]' ]
+    types: [closed]
+  # push:
+  #   branches: [ release_test, 'iancha_test[0-9]' ]
 
 
 jobs:
   cherry-picker-on-close:
-    if: github.event.pusher.name == 'iancha1992'
+    # if: github.event.pusher.name == 'iancha1992'
+    # if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       # - name: Harden Runner
