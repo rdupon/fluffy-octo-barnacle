@@ -5,7 +5,7 @@ on:
     # branches: [master]
     # types: [closed]
   push:
-    branches: [release_test]
+    branches: [ release_test, 'iancha_test[0-9]' ]
 
 
 jobs:
