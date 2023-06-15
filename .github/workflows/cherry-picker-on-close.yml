@@ -10,7 +10,7 @@ on:
 
 jobs:
   cherry-picker-on-close:
-    if: github.event.pusher.name == 'hiya'
+    if: github.event.pusher.name == 'iancha1992'
     runs-on: ubuntu-latest
     steps:
       # - name: Harden Runner
