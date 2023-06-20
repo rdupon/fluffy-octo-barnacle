@@ -14,9 +14,8 @@
 
 """ Implementation of java_binary for bazel """
 
-load(":common/java/java_common.bzl", "BASIC_JAVA_LIBRARY_IMPLICIT_ATTRS", "basic_java_library", "collect_deps")
-load(":common/java/java_util.bzl", "create_single_jar")
-load(":common/java/java_helper.bzl", helper = "util")
+load(":common/java/basic_java_library.bzl", "BASIC_JAVA_LIBRARY_IMPLICIT_ATTRS", "basic_java_library", "collect_deps")
+load(":common/java/java_helper.bzl", "helper")
 load(":common/java/java_semantics.bzl", "semantics")
 load(":common/rule_util.bzl", "merge_attrs")
 load(":common/cc/semantics.bzl", cc_semantics = "semantics")
@@ -25,9 +24,9 @@ load(":common/cc/cc_info.bzl", "CcInfo")
 load(":common/paths.bzl", "paths")
 load(":common/java/java_info.bzl", "JavaInfo")
 load(":common/java/java_plugin_info.bzl", "JavaPluginInfo")
+load(":common/java/java_common.bzl", "java_common")
 
 CcLauncherInfo = _builtins.internal.cc_internal.launcher_provider
-java_common = _builtins.toplevel.java_common
 
 InternalDeployJarInfo = provider(
     "Provider for passing info to deploy jar rule",
@@ -335,7 +334,7 @@ def _create_shared_archive(ctx, java_attrs):
     runtime = semantics.find_java_runtime_toolchain(ctx)
     jsa = ctx.actions.declare_file("%s.jsa" % ctx.label.name)
     merged = ctx.actions.declare_file(jsa.dirname + "/" + helper.strip_extension(jsa) + "-merged.jar")
-    create_single_jar(
+    helper.create_single_jar(
         ctx,
         merged,
         java_attrs.runtime_jars,
@@ -412,7 +411,7 @@ def _create_one_version_check(ctx, inputs):
     return output
 
 def _create_deploy_sources_jar(ctx, sources):
-    create_single_jar(
+    helper.create_single_jar(
         ctx,
         ctx.outputs.deploysrcjar,
         sources,
