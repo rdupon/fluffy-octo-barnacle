@@ -20,4 +20,4 @@ jobs:
         with:
           token: ${{ secrets.BAZEL_IO_TOKEN }}
           triggered-on: commented
-          payload: ${{ toJSON(github.event) }}
+          # payload: ${{ toJSON(github.event) }}
