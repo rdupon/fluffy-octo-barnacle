@@ -25,4 +25,4 @@ jobs:
         with:
           token: ${{ secrets.BAZEL_IO_TOKEN }}
           triggered-on: closed
-          github-payload: ${{ github.event }}
+          github-payload: github.event
