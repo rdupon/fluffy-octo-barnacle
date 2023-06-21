@@ -16,7 +16,7 @@ jobs:
       - name: Logging github event
         run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run cherrypicker on comment
-        uses: iancha1992a/continuous-integration/actions/cherry-picker/on-comment@release_test # master
+        uses: iancha1992/continuous-integration/actions/cherry-picker/on-comment@release_test # master
         with:
           token: ${{ secrets.BAZEL_IO_TOKEN }}
           triggered-on: commented
