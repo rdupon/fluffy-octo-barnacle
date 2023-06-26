@@ -439,7 +439,7 @@ public final class RemoteOptions extends CommonRemoteOptions {
   @Option(
       name = "remote_download_outputs",
       oldName = "experimental_remote_download_outputs",
-      defaultValue = "all",
+      defaultValue = "toplevel",
       category = "remote",
       documentationCategory = OptionDocumentationCategory.OUTPUT_PARAMETERS,
       effectTags = {OptionEffectTag.AFFECTS_OUTPUTS},
@@ -485,6 +485,18 @@ public final class RemoteOptions extends CommonRemoteOptions {
           "Only downloads remote outputs of top level targets to the local machine. This flag is an"
               + " alias for flag --remote_download_outputs=toplevel.")
   public Void remoteOutputsToplevel;
+
+  @Option(
+      name = "remote_download_all",
+      defaultValue = "null",
+      expansion = {"--remote_download_outputs=all"},
+      category = "remote",
+      documentationCategory = OptionDocumentationCategory.OUTPUT_PARAMETERS,
+      effectTags = {OptionEffectTag.AFFECTS_OUTPUTS},
+      help =
+          "Downloads all remote outputs to the local machine. This flag is an alias for flag"
+              + " --remote_download_outputs=all.")
+  public Void remoteOutputsAll;
 
   @Option(
       name = "remote_result_cache_priority",

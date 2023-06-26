@@ -346,8 +346,13 @@ final class ModuleInfoExtractor {
       // Note that it's possible that qualifiedName != getDocumentedProviderName() if the same
       // provider symbol is made accessible under more than one qualified name.
       // TODO(b/276733504): if a provider (or any other documentable entity) is made accessible
-      // under two different qualified names, record them in a repeated field inside a single *Info
-      // object, instead of producing a separate *Info object for each alias.
+      // under two different public qualified names, record them in a repeated field inside a single
+      // ProviderInfo (or other ${FOO}Info for documentable entity ${FOO}) message, instead of
+      // producing a separate ${FOO}Info message for each alias. That requires adding an "alias"
+      // field to ${FOO}Info messages (making the existing "${FOO}_name" field repeated would break
+      // existing Stardoc templates). Note that for backwards compatibility,
+      // ProviderNameGroup.provider_name would still need to refer to only the first qualified name
+      // under which a given provider is made accessible by the module.
       providerInfoBuilder.setProviderName(qualifiedName);
       // Record the origin provider key for cross references.
       providerInfoBuilder.setOriginKey(
@@ -383,7 +388,11 @@ final class ModuleInfoExtractor {
               .setFile(
                   aspect.getAspectClass().getExtensionLabel().getDisplayForm(repositoryMapping)));
       aspect.getDocumentation().ifPresent(aspectInfoBuilder::setDocString);
-      aspectInfoBuilder.addAllAspectAttribute(aspect.getAttributeAspects());
+      for (String aspectAttribute : aspect.getAttributeAspects()) {
+        if (isPublicName(aspectAttribute)) {
+          aspectInfoBuilder.addAspectAttribute(aspectAttribute);
+        }
+      }
       aspectInfoBuilder.addAttribute(IMPLICIT_NAME_ATTRIBUTE_INFO); // name comes first
       for (Attribute attribute : aspect.getAttributes()) {
         if (isPublicName(attribute.getPublicName())) {
@@ -472,6 +481,12 @@ final class ModuleInfoExtractor {
         return AttributeType.OUTPUT;
       } else if (type.equals(BuildType.OUTPUT_LIST)) {
         return AttributeType.OUTPUT_LIST;
+      } else if (type.equals(BuildType.LICENSE)) {
+        // TODO(https://github.com/bazelbuild/bazel/issues/6420): deprecated, disabled in Bazel by
+        // default, broken and with almost no remaining users, so we don't have an AttributeType for
+        // it. Until this type is removed, following the example of legacy Stardoc, pretend it's a
+        // list of strings.
+        return AttributeType.STRING_LIST;
       }
 
       throw new ExtractionException(
