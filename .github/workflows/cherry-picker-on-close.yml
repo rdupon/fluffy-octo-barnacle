@@ -21,7 +21,7 @@ jobs:
       - name: Logging github event
         run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run cherrypicker on close
-        uses: iancha1992/continuous-integration/actions/cherry-picker@release_test
+        uses: iancha1992/continuous-integration/actions/cherry-picker@feature-cherrypick
         with:
           token: ${{ secrets.BAZEL_IO_TOKEN }}
           triggered-on: closed
