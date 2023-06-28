@@ -88,7 +88,7 @@ import com.google.devtools.build.lib.analysis.ConfiguredTarget;
 import com.google.devtools.build.lib.analysis.ConfiguredTargetValue;
 import com.google.devtools.build.lib.analysis.Dependency;
 import com.google.devtools.build.lib.analysis.DependencyKind;
-import com.google.devtools.build.lib.analysis.InconsistentNullConfigException;
+import com.google.devtools.build.lib.analysis.InvalidVisibilityDependencyException;
 import com.google.devtools.build.lib.analysis.PlatformOptions;
 import com.google.devtools.build.lib.analysis.TargetAndConfiguration;
 import com.google.devtools.build.lib.analysis.TargetConfiguredEvent;
@@ -2574,6 +2574,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory, Configur
     syncPackageLoading(pathPackageLocator, commandId, clientEnv, tsgm, executors, options);
 
     if (lastAnalysisDiscarded) {
+      logger.atInfo().log("Discarding analysis cache because the previous invocation told us to");
       dropConfiguredTargetsNow(eventHandler);
       lastAnalysisDiscarded = false;
     }
@@ -3886,7 +3887,8 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory, Configur
           public void acceptConfiguredTargetAndDataError(ConfiguredValueCreationException error) {}
 
           @Override
-          public void acceptConfiguredTargetAndDataError(InconsistentNullConfigException error) {}
+          public void acceptConfiguredTargetAndDataError(
+              InvalidVisibilityDependencyException error) {}
         };
 
     EvaluationResult<SkyValue> result;
