@@ -688,5 +688,9 @@ public final class Label implements Comparable<Label>, StarlarkValue, SkyKey, Co
     protected Pool<Label> getPool() {
       return globalPool;
     }
+
+    public boolean enabled() {
+      return globalPool != null;
+    }
   }
 }

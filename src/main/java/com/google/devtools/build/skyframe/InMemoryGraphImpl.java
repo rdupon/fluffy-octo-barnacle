@@ -125,9 +125,6 @@ public class InMemoryGraphImpl implements InMemoryGraph {
       return;
     }
     LabelInterner interner = Label.getLabelInterner();
-    if (interner == null) {
-      return;
-    }
 
     ImmutableSortedMap<String, Target> targets = packageValue.getPackage().getTargets();
     targets.values().forEach(t -> interner.weakIntern(t.getLabel()));
