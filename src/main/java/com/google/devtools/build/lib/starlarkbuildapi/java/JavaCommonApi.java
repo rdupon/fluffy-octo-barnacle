@@ -16,7 +16,6 @@ package com.google.devtools.build.lib.starlarkbuildapi.java;
 
 import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.docgen.annot.DocCategory;
-import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.Depset;
 import com.google.devtools.build.lib.collect.nestedset.Depset.TypeException;
 import com.google.devtools.build.lib.packages.RuleClass.ConfiguredTargetFactory.RuleErrorException;
@@ -375,15 +374,6 @@ public interface JavaCommonApi<
   ProviderApi getJavaRuntimeProvider();
 
   @StarlarkMethod(
-      name = "java_toolchain_label",
-      doc = "Returns the toolchain's label.",
-      parameters = {
-        @Param(name = "java_toolchain", positional = true, named = false, doc = "The toolchain."),
-      },
-      enableOnlyWithFlag = BuildLanguageOptions.EXPERIMENTAL_GOOGLE_LEGACY_API)
-  Label getJavaToolchainLabel(JavaToolchainStarlarkApiProviderApi toolchain) throws EvalException;
-
-  @StarlarkMethod(
       name = "BootClassPathInfo",
       doc = "The provider used to supply bootclasspath information",
       structField = true)
@@ -405,6 +395,19 @@ public interface JavaCommonApi<
       useStarlarkThread = true)
   String getTargetKind(Object target, boolean dereferenceAliases, StarlarkThread thread)
       throws EvalException;
+
+  @StarlarkMethod(
+      name = "to_java_binary_info",
+      doc = "Returns a copy of the given JavaInfo with minimal info returned by a java_binary",
+      parameters = {
+        @Param(
+            name = "java_info",
+            positional = true,
+            named = false,
+            doc = "The JavaInfo to enhance."),
+      },
+      useStarlarkThread = true)
+  JavaInfoT toJavaBinaryInfo(JavaInfoT javaInfo, StarlarkThread thread) throws EvalException;
 
   @StarlarkMethod(
       name = "get_build_info",
