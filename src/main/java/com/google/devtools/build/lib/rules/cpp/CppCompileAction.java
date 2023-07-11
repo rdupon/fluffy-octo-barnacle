@@ -1049,30 +1049,15 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
         errors.add(input.getExecPath().toString());
       }
     }
-    if (VALIDATION_DEBUG_WARN) {
-      synchronized (System.err) {
-        if (errors.hasProblems()) {
-          if (errors.hasProblems()) {
-            System.err.println("ERROR: Include(s) were not in declared srcs:");
-          } else {
-            System.err.println(
-                "INFO: Include(s) were OK for '" + getSourceFile() + "', declared srcs:");
-          }
-          for (Artifact a : ccCompilationContext.getDeclaredIncludeSrcs().toList()) {
-            System.err.println("  '" + a.toDetailString() + "'");
-          }
-          System.err.println(" or under loose headers dirs:");
-          for (PathFragment f : Sets.newTreeSet(ccCompilationContext.getLooseHdrsDirs().toList())) {
-            System.err.println("  '" + f + "'");
-          }
-          System.err.println(" with prefixes:");
-          for (PathFragment dirpath : ccCompilationContext.getQuoteIncludeDirs()) {
-            System.err.println("  '" + dirpath + "'");
-          }
-        }
-      }
-    }
-    errors.assertProblemFree(this, getSourceFile());
+    errors.assertProblemFree(
+        "undeclared inclusion(s) in rule '"
+            + this.getOwner().getLabel()
+            + "':\n"
+            + "this rule is missing dependency declarations for the following files "
+            + "included by '"
+            + getSourceFile().prettyPrint()
+            + "':",
+        this);
   }
 
   private Iterable<PathFragment> getValidationIgnoredDirs() {
