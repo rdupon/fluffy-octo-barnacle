@@ -4,6 +4,9 @@ on:
   issues:
     types: [milestoned]
 
+env:
+  GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
+
 jobs:
   cherry-picker-on-comment:
     if: startsWith(github.event.issue.body, 'Forked from') && (github.event.issue.user.login == 'iancha1992')
@@ -18,6 +21,6 @@ jobs:
       - name: Run cherrypicker on comment
         uses: iancha1992/continuous-integration/actions/cherry-picker@feature-cherrypick
         with:
-          token: ${{ secrets.BAZEL_IO_TOKEN }}
+          # token: ${{ secrets.BAZEL_IO_TOKEN }}
           triggered-on: commented
           pr-number: ${{ github.event.issue.body }}
