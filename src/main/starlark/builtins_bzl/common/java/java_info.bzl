@@ -133,11 +133,12 @@ def to_java_binary_info(java_info):
         "_neverlink": False,
         "_constraints": [],
         "annotation_processing": java_info.annotation_processing,
-        "cc_link_params_info": getattr(java_info, "cc_link_params_info", None),
         "transitive_native_libraries": java_info.transitive_native_libraries,
         "source_jars": java_info.source_jars,
         "transitive_source_jars": java_info.transitive_source_jars,
     }
+    if hasattr(java_info, "cc_link_params_info"):
+        result.update(cc_link_params_info = java_info.cc_link_params_info)
 
     compilation_info = _EMPTY_COMPILATION_INFO
     if java_info.compilation_info:
@@ -171,6 +172,9 @@ def to_java_binary_info(java_info):
         java_outputs = java_outputs,
         outputs = _JavaRuleOutputJarsInfo(jars = java_outputs, jdeps = None, native_headers = None),
     )
+
+    # so that translation into native JavaInfo does not add JavaCompilationArgsProvider
+    result.update(_is_binary = True)
     return _new_javainfo(**result)
 
 def _to_mutable_dict(java_info):
@@ -506,6 +510,7 @@ JavaInfo, _new_javainfo = provider(
         "_compile_time_java_dependencies": "internal API, do not use",
         "_neverlink": "internal API, do not use",
         "_constraints": "internal API, do not use",
+        "_is_binary": "internal API, do not use",
     },
     init = _javainfo_init,
 )
