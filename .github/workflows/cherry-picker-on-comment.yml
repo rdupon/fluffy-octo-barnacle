@@ -9,7 +9,7 @@ env:
 
 jobs:
   cherry-picker-on-comment:
-    permissions: write-all
+    # permissions: write-all
     if: startsWith(github.event.issue.body, 'Forked from') && (github.event.issue.user.login == 'iancha1992')
     runs-on: ubuntu-latest
     steps:
@@ -25,3 +25,9 @@ jobs:
           # token: ${{ secrets.BAZEL_IO_TOKEN }}
           triggered-on: commented
           pr-number: ${{ github.event.issue.body }}
+  create-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh pr create --repo chaheein123/bazel --title cocacola --body hihi --head iancha1992:tomtesting --base fake-release-6.3.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
