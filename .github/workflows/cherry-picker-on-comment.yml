@@ -26,6 +26,9 @@ jobs:
   create-pr:
     permissions:
       id-token: write
+      contents: read
+      issues: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - run: gh pr create --repo chaheein123/bazel --title cocacola --body hihi --head iancha1992:tomtesting --base fake-release-6.3.0
