@@ -24,7 +24,8 @@ jobs:
   #         triggered-on: commented
   #         pr-number: ${{ github.event.issue.body }}
   create-pr:
-    permissions: write-all
+    permissions:
+      id-token: write
     runs-on: ubuntu-latest
     steps:
       - run: gh pr create --repo chaheein123/bazel --title cocacola --body hihi --head iancha1992:tomtesting --base fake-release-6.3.0
