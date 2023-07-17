@@ -1,7 +1,7 @@
 name: cherry-picker-on-comment
 
 on:
-  - issues:
+  issues:
     types: [milestoned]
 
 # env:
