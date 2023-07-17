@@ -35,7 +35,8 @@ jobs:
     steps:
       - run: gh pr create --repo chaheein123/bazel --title cocacola --body hihi --head iancha1992:tomtesting --base fake-release-6.3.0
         env:
-          GITHUB_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
+          # GITHUB_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # - uses: actions/checkout@v3
       # - name: Create Pull Request
       #   uses: peter-evans/create-pull-request@v5
