@@ -3,7 +3,6 @@ name: cherry-picker-on-comment
 on:
   - issues:
     types: [milestoned]
-  - pull_request
 
 # env:
 #   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
