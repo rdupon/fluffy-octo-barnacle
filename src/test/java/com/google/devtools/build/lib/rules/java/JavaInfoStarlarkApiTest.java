@@ -44,6 +44,7 @@ import com.google.devtools.build.lib.vfs.Path;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.IOException;
 import java.util.Map;
+import net.starlark.java.eval.Starlark;
 import net.starlark.java.eval.StarlarkList;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -873,6 +874,25 @@ public class JavaInfoStarlarkApiTest extends BuildViewTestCase {
   }
 
   @Test
+  public void starlarkJavaOutputsCanBeAddedToJavaPluginInfo() throws Exception {
+    Artifact classJar = createArtifact("foo.jar");
+    StarlarkInfo starlarkJavaOutput =
+        makeStruct(ImmutableMap.of("source_jars", Starlark.NONE, "class_jar", classJar));
+    StarlarkInfo starlarkPluginInfo =
+        makeStruct(
+            ImmutableMap.of(
+                "java_outputs", StarlarkList.immutableOf(starlarkJavaOutput),
+                "plugins", JavaPluginData.empty(),
+                "api_generating_plugins", JavaPluginData.empty()));
+
+    JavaPluginInfo pluginInfo = JavaPluginInfo.PROVIDER.wrap(starlarkPluginInfo);
+
+    assertThat(pluginInfo).isNotNull();
+    assertThat(pluginInfo.getJavaOutputs()).hasSize(1);
+    assertThat(pluginInfo.getJavaOutputs().get(0).getClassJar()).isEqualTo(classJar);
+  }
+
+  @Test
   public void javaOutputSourceJarsReturnsListWithIncompatibleFlagDisabled() throws Exception {
     setBuildLanguageOptions("--noincompatible_depset_for_java_output_source_jars");
     scratch.file(
@@ -933,6 +953,39 @@ public class JavaInfoStarlarkApiTest extends BuildViewTestCase {
   }
 
   @Test
+  public void nativeAndStarlarkJavaOutputsCanBeAddedToADepset() throws Exception {
+    scratch.file(
+        "foo/extension.bzl",
+        "def _impl(ctx):",
+        "  f = ctx.actions.declare_file(ctx.label.name + '.jar')",
+        "  ctx.actions.write(f, '')",
+        "  return [JavaInfo(output_jar=f, compile_jar=None)]",
+        "",
+        "my_rule = rule(implementation = _impl)");
+    scratch.file(
+        "foo/BUILD",
+        //
+        "load(':extension.bzl', 'my_rule')",
+        "my_rule(name = 'my_starlark_rule')");
+    JavaOutput nativeOutput =
+        JavaOutput.builder().setClassJar(createArtifact("native.jar")).build();
+    StarlarkList<?> starlarkOutputs =
+        ((StarlarkInfo)
+                getConfiguredTarget("//foo:my_starlark_rule").get(JavaInfo.PROVIDER.getKey()))
+            .getValue("java_outputs", StarlarkList.class);
+
+    Depset depset =
+        Depset.fromDirectAndTransitive(
+            Order.STABLE_ORDER,
+            /* direct= */ ImmutableList.builder().add(nativeOutput).addAll(starlarkOutputs).build(),
+            /* transitive= */ ImmutableList.of(),
+            /* strict= */ true);
+
+    assertThat(depset).isNotNull();
+    assertThat(depset.toList()).hasSize(2);
+  }
+
+  @Test
   public void translateStarlarkJavaInfo_minimal() throws Exception {
     ImmutableMap<String, Object> fields = getBuilderWithMandataryFields().buildOrThrow();
     StarlarkInfo starlarkInfo = makeStruct(fields);
@@ -980,6 +1033,37 @@ public class JavaInfoStarlarkApiTest extends BuildViewTestCase {
     assertThat(javaInfo.getCompilationInfoProvider().getBootClasspathList()).hasSize(1);
     assertThat(prettyArtifactNames(javaInfo.getCompilationInfoProvider().getBootClasspathList()))
         .containsExactly("cp.jar");
+  }
+
+  @Test
+  public void translatedStarlarkCompilationInfoEqualsNativeInstance() throws Exception {
+    Artifact bootClasspathArtifact = createArtifact("boot.jar");
+    NestedSet<Artifact> compilationClasspath =
+        NestedSetBuilder.create(Order.NAIVE_LINK_ORDER, createArtifact("compile.jar"));
+    NestedSet<Artifact> runtimeClasspath =
+        NestedSetBuilder.create(Order.NAIVE_LINK_ORDER, createArtifact("runtime.jar"));
+    StarlarkInfo starlarkInfo =
+        makeStruct(
+            ImmutableMap.of(
+                "compilation_classpath", Depset.of(Artifact.class, compilationClasspath),
+                "runtime_classpath", Depset.of(Artifact.class, runtimeClasspath),
+                "javac_options", StarlarkList.immutableOf("opt1", "opt2"),
+                "boot_classpath", StarlarkList.immutableOf(bootClasspathArtifact)));
+    JavaCompilationInfoProvider nativeCompilationInfo =
+        new JavaCompilationInfoProvider.Builder()
+            .setCompilationClasspath(compilationClasspath)
+            .setRuntimeClasspath(runtimeClasspath)
+            .setJavacOpts(ImmutableList.of("opt1", "opt2"))
+            .setBootClasspath(
+                BootClassPathInfo.create(
+                    NestedSetBuilder.create(Order.NAIVE_LINK_ORDER, bootClasspathArtifact)))
+            .build();
+
+    JavaCompilationInfoProvider starlarkCompilationInfo =
+        JavaCompilationInfoProvider.fromStarlarkCompilationInfo(starlarkInfo);
+
+    assertThat(starlarkCompilationInfo).isNotNull();
+    assertThat(starlarkCompilationInfo).isEqualTo(nativeCompilationInfo);
   }
 
   @Test
