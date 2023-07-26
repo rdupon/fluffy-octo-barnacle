@@ -104,7 +104,7 @@ def merge(
     """
     _validate_provider_list(providers, "providers", JavaInfo)
 
-    plugin_info = _merge_plugin_info_without_outputs(providers)
+    plugin_info = merge_plugin_info_without_outputs(providers)
 
     source_jars = []  # [File]
     transitive_source_jars = []  # [depset[File]]
@@ -407,7 +407,7 @@ def _javainfo_init_base(
     concatenated_deps = _compute_concatenated_deps(deps, runtime_deps, exports)
 
     source_jars = [source_jar] if source_jar else []
-    plugin_info = _merge_plugin_info_without_outputs(exported_plugins + exports)
+    plugin_info = merge_plugin_info_without_outputs(exported_plugins + exports)
     transitive_compile_time_jars = depset(
         order = "preorder",
         direct = [compile_jar] if compile_jar else [],
@@ -679,7 +679,29 @@ _EMPTY_PLUGIN_DATA = _JavaPluginDataInfo(
     processor_data = depset(),
 )
 
-def _merge_plugin_info_without_outputs(infos):
+def disable_plugin_info_annotation_processing(plugin_info):
+    """Returns a copy of the provided JavaPluginInfo without annotation processing info
+
+    Args:
+        plugin_info: (JavaPluginInfo) the instance to transform
+
+    Returns:
+        (JavaPluginInfo) a new, transformed instance.
+     """
+    return _new_javaplugininfo(
+        plugins = _JavaPluginDataInfo(
+            processor_classes = depset(order = "preorder"),
+            # Preserve the processor path, since it may contain Error Prone plugins
+            # which will be service-loaded by JavaBuilder.
+            processor_jars = plugin_info.plugins.processor_jars,
+            # Preserve data, which may be used by Error Prone plugins.
+            processor_data = plugin_info.plugins.processor_data,
+        ),
+        api_generating_plugins = _EMPTY_PLUGIN_DATA,
+        java_outputs = plugin_info.java_outputs,
+    )
+
+def merge_plugin_info_without_outputs(infos):
     """ Merge plugin information from a list of JavaPluginInfo or JavaInfo
 
     Args:
