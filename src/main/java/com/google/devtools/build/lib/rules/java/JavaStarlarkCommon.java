@@ -14,7 +14,9 @@
 package com.google.devtools.build.lib.rules.java;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.devtools.build.lib.rules.java.JavaInfoBuildHelper.getStrictDepsMode;
 
+import com.google.common.base.Ascii;
 import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -35,6 +37,7 @@ import com.google.devtools.build.lib.collect.nestedset.Depset;
 import com.google.devtools.build.lib.collect.nestedset.Depset.TypeException;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.collect.nestedset.Order;
+import com.google.devtools.build.lib.packages.Info;
 import com.google.devtools.build.lib.packages.NativeInfo;
 import com.google.devtools.build.lib.packages.Provider;
 import com.google.devtools.build.lib.packages.RuleClass.ConfiguredTargetFactory.RuleErrorException;
@@ -196,26 +199,143 @@ public class JavaStarlarkCommon
   }
 
   @Override
+  public void createHeaderCompilationAction(
+      StarlarkRuleContext ctx,
+      JavaToolchainProvider toolchain,
+      Artifact headerJar,
+      Artifact headerDepsProto,
+      Info pluginInfo,
+      Depset sourceFiles,
+      Sequence<?> sourceJars,
+      Depset compileTimeClasspath,
+      Depset directJars,
+      Object bootClassPath,
+      Depset compileTimeJavaDeps,
+      Sequence<?> javacOpts,
+      String strictDepsMode,
+      Label targetLabel,
+      Object injectingRuleKind,
+      boolean enableDirectClasspath,
+      Sequence<?> additionalInputs)
+      throws EvalException, TypeException, RuleErrorException, LabelSyntaxException {
+    checkJavaToolchainIsDeclaredOnRule(ctx.getRuleContext());
+    JavaTargetAttributes.Builder attributesBuilder =
+        new JavaTargetAttributes.Builder(javaSemantics)
+            .addSourceJars(Sequence.cast(sourceJars, Artifact.class, "source_jars"))
+            .addSourceFiles(sourceFiles.toList(Artifact.class))
+            .addDirectJars(directJars.getSet(Artifact.class))
+            .addCompileTimeClassPathEntries(compileTimeClasspath.getSet(Artifact.class))
+            .setStrictJavaDeps(getStrictDepsMode(Ascii.toUpperCase(strictDepsMode)))
+            .setTargetLabel(targetLabel)
+            .setInjectingRuleKind(
+                injectingRuleKind == Starlark.NONE ? null : (String) injectingRuleKind)
+            .addPlugin(JavaPluginInfo.PROVIDER.wrap(pluginInfo))
+            .addCompileTimeDependencyArtifacts(compileTimeJavaDeps.getSet(Artifact.class));
+    if (bootClassPath instanceof BootClassPathInfo
+        && !((BootClassPathInfo) bootClassPath).isEmpty()) {
+      attributesBuilder.setBootClassPath((BootClassPathInfo) bootClassPath);
+    }
+    JavaCompilationHelper compilationHelper =
+        new JavaCompilationHelper(
+            ctx.getRuleContext(),
+            javaSemantics,
+            Sequence.cast(javacOpts, String.class, "javac_opts").getImmutableList(),
+            attributesBuilder,
+            toolchain,
+            Sequence.cast(additionalInputs, Artifact.class, "additional_inputs")
+                .getImmutableList());
+    compilationHelper.enableDirectClasspath(enableDirectClasspath);
+    compilationHelper.createHeaderCompilationAction(headerJar, headerDepsProto);
+  }
+
+  @Override
+  public void createCompilationAction(
+      StarlarkRuleContext ctx,
+      JavaToolchainProvider javaToolchain,
+      Artifact output,
+      Object depsProto,
+      Object genClass,
+      Object genSource,
+      Artifact manifestProto,
+      Artifact nativeHeader,
+      Info pluginInfo,
+      Depset sourceFiles,
+      Sequence<?> sourceJars,
+      Sequence<?> resources,
+      Depset resourceJars,
+      Depset compileTimeClasspath,
+      Sequence<?> classpathResources,
+      Sequence<?> sourcepath,
+      Depset directJars,
+      Object bootClassPath,
+      Depset compileTimeJavaDeps,
+      Sequence<?> javacOpts,
+      String strictDepsMode,
+      Label targetLabel,
+      Object injectingRuleKind,
+      boolean enableJSpecify,
+      boolean enableDirectClasspath,
+      Sequence<?> additionalInputs,
+      Sequence<?> additionalOutputs)
+      throws EvalException, TypeException, RuleErrorException, LabelSyntaxException {
+    checkJavaToolchainIsDeclaredOnRule(ctx.getRuleContext());
+    JavaCompileOutputs<Artifact> outputs =
+        JavaCompileOutputs.builder()
+            .output(output)
+            .depsProto(depsProto == Starlark.NONE ? null : (Artifact) depsProto)
+            .genClass(genClass == Starlark.NONE ? null : (Artifact) genClass)
+            .genSource(genSource == Starlark.NONE ? null : (Artifact) genSource)
+            .manifestProto(manifestProto)
+            .nativeHeader(nativeHeader)
+            .build();
+    JavaTargetAttributes.Builder attributesBuilder =
+        new JavaTargetAttributes.Builder(javaSemantics)
+            .addSourceJars(Sequence.cast(sourceJars, Artifact.class, "source_jars"))
+            .addSourceFiles(sourceFiles.toList(Artifact.class))
+            .addDirectJars(directJars.getSet(Artifact.class))
+            .addCompileTimeClassPathEntries(compileTimeClasspath.getSet(Artifact.class))
+            .addClassPathResources(
+                Sequence.cast(classpathResources, Artifact.class, "classpath_resources"))
+            .setStrictJavaDeps(getStrictDepsMode(Ascii.toUpperCase(strictDepsMode)))
+            .setTargetLabel(targetLabel)
+            .setInjectingRuleKind(
+                injectingRuleKind == Starlark.NONE ? null : (String) injectingRuleKind)
+            .setSourcePath(
+                Sequence.cast(sourcepath, Artifact.class, "source_path").getImmutableList())
+            .addPlugin(JavaPluginInfo.PROVIDER.wrap(pluginInfo))
+            .addAdditionalOutputs(
+                Sequence.cast(additionalOutputs, Artifact.class, "additional_outputs"));
+    if (bootClassPath instanceof BootClassPathInfo
+        && !((BootClassPathInfo) bootClassPath).isEmpty()) {
+      attributesBuilder.setBootClassPath((BootClassPathInfo) bootClassPath);
+    }
+    for (Artifact resource : Sequence.cast(resources, Artifact.class, "resources")) {
+      attributesBuilder.addResource(
+          JavaHelper.getJavaResourcePath(javaSemantics, ctx.getRuleContext(), resource), resource);
+    }
+    attributesBuilder.addResourceJars(resourceJars.getSet(Artifact.class));
+    attributesBuilder.addCompileTimeDependencyArtifacts(compileTimeJavaDeps.getSet(Artifact.class));
+    JavaCompilationHelper compilationHelper =
+        new JavaCompilationHelper(
+            ctx.getRuleContext(),
+            javaSemantics,
+            Sequence.cast(javacOpts, String.class, "javac_opts").getImmutableList(),
+            attributesBuilder,
+            javaToolchain,
+            Sequence.cast(additionalInputs, Artifact.class, "additional_inputs")
+                .getImmutableList());
+    compilationHelper.enableJspecify(enableJSpecify);
+    compilationHelper.enableDirectClasspath(enableDirectClasspath);
+    compilationHelper.createCompileAction(outputs);
+  }
+
+  @Override
   // TODO(b/78512644): migrate callers to passing explicit javacopts or using custom toolchains, and
   // delete
   public ImmutableList<String> getDefaultJavacOpts(JavaToolchainProvider javaToolchain)
       throws EvalException {
     // We don't have a rule context if the default_javac_opts.java_toolchain parameter is set
     return ((JavaToolchainProvider) javaToolchain).getJavacOptions(/* ruleContext= */ null);
-  }
-
-  @Override
-  public JavaInfo mergeJavaProviders(
-      Sequence<?> providers, /* <JavaInfo> expected. */
-      boolean mergeJavaOutputs,
-      boolean mergeSourceJars,
-      StarlarkThread thread)
-      throws EvalException {
-    if (!mergeJavaOutputs || !mergeSourceJars) {
-      checkPrivateAccess(thread);
-    }
-    return JavaInfo.merge(
-        JavaInfo.wrapSequence(providers, "providers"), mergeJavaOutputs, mergeSourceJars);
   }
 
   @Override
@@ -363,6 +483,13 @@ public class JavaStarlarkCommon
     return thread
         .getSemantics()
         .getBool(BuildLanguageOptions.INCOMPATIBLE_DEPSET_FOR_JAVA_OUTPUT_SOURCE_JARS);
+  }
+
+  @Override
+  public JavaInfo wrapJavaInfo(Info javaInfo, StarlarkThread thread)
+      throws EvalException, RuleErrorException {
+    checkPrivateAccess(thread);
+    return JavaInfo.PROVIDER.wrap(javaInfo);
   }
 
   static boolean isInstanceOfProvider(Object obj, Provider provider) {

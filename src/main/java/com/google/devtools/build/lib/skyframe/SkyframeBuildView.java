@@ -668,27 +668,6 @@ public final class SkyframeBuildView {
           skyframeExecutor.resetBuildDriverFunction();
           skyframeExecutor.setTestTypeResolver(null);
 
-          // Coverage needs to be done after the list of analyzed targets/tests is known.
-          ImmutableSet<Artifact> coverageArtifacts =
-              coverageReportActionsWrapperSupplier.getCoverageArtifacts(
-                  buildResultListener.getAnalyzedTargets(), buildResultListener.getAnalyzedTests());
-          eventBus.post(CoverageArtifactsKnownEvent.create(coverageArtifacts));
-          additionalArtifactsResult =
-              skyframeExecutor.evaluateSkyKeys(
-                  eventHandler, Artifact.keys(coverageArtifacts), keepGoing);
-          eventBus.post(new CoverageActionFinishedEvent());
-          if (additionalArtifactsResult.hasError()) {
-            detailedExitCodes.add(
-                SkyframeErrorProcessor.processErrors(
-                        additionalArtifactsResult,
-                        skyframeExecutor.getCyclesReporter(),
-                        eventHandler,
-                        keepGoing,
-                        eventBus,
-                        bugReporter,
-                        /* includeExecutionPhase= */ true)
-                    .executionDetailedExitCode());
-          }
           // These attributes affect whether conflict checking will be done during the next build.
           if (shouldCheckForConflicts(checkForActionConflicts, newKeys)) {
             largestTopLevelKeySetCheckedForConflicts = newKeys;
@@ -698,8 +677,7 @@ public final class SkyframeBuildView {
 
         // The exclusive tests whose analysis succeeded i.e. those that can be run.
         ImmutableSet<ConfiguredTarget> exclusiveTestsToRun = getExclusiveTests(evaluationResult);
-        boolean continueWithExclusiveTests =
-            (!evaluationResult.hasError() && !additionalArtifactsResult.hasError()) || keepGoing;
+        boolean continueWithExclusiveTests = !evaluationResult.hasError() || keepGoing;
 
         if (continueWithExclusiveTests && !exclusiveTestsToRun.isEmpty()) {
           skyframeExecutor.getIsBuildingExclusiveArtifacts().set(true);
@@ -728,6 +706,29 @@ public final class SkyframeBuildView {
                       .executionDetailedExitCode());
             }
           }
+        }
+        // Coverage report generation should only be requested after all tests have executed.
+        // We could generate baseline coverage artifacts earlier; it is only the timing of the
+        // combined report that matters.
+        ImmutableSet<Artifact> coverageArtifacts =
+            coverageReportActionsWrapperSupplier.getCoverageArtifacts(
+                buildResultListener.getAnalyzedTargets(), buildResultListener.getAnalyzedTests());
+        eventBus.post(CoverageArtifactsKnownEvent.create(coverageArtifacts));
+        additionalArtifactsResult =
+            skyframeExecutor.evaluateSkyKeys(
+                eventHandler, Artifact.keys(coverageArtifacts), keepGoing);
+        eventBus.post(new CoverageActionFinishedEvent());
+        if (additionalArtifactsResult.hasError()) {
+          detailedExitCodes.add(
+              SkyframeErrorProcessor.processErrors(
+                      additionalArtifactsResult,
+                      skyframeExecutor.getCyclesReporter(),
+                      eventHandler,
+                      keepGoing,
+                      eventBus,
+                      bugReporter,
+                      /* includeExecutionPhase= */ true)
+                  .executionDetailedExitCode());
         }
       } finally {
         // No more action execution beyond this point.
@@ -857,8 +858,6 @@ public final class SkyframeBuildView {
     // Clearing the syscall cache here to free up some heap space.
     // TODO(b/273225564) Would this incur more CPU cost for the execution phase cache misses?
     skyframeExecutor.clearSyscallCache();
-
-    skyframeExecutor.clearPrerequisitePackages();
 
     enableAnalysis(false);
 
