@@ -25,4 +25,4 @@ jobs:
           pr-number: ${{ github.event.issue.body }}
           milestone-title: ${{ github.event.milestone.title }}
           milestoned-issue-number: ${{ github.event.issue.number }}
-
+          is-prod: True
