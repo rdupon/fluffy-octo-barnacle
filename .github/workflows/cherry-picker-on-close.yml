@@ -1,6 +1,7 @@
 name: cherry-picker-on-close
 
 on:
+  # maybe make it more specific (closed by the cpybara)
   pull_request:
     types: [closed]
 
