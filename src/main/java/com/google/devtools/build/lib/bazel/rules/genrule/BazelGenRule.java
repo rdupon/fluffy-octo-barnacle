@@ -14,7 +14,10 @@
 
 package com.google.devtools.build.lib.bazel.rules.genrule;
 
+import com.google.devtools.build.lib.analysis.CommandHelper;
 import com.google.devtools.build.lib.analysis.RuleContext;
+import com.google.devtools.build.lib.bazel.BazelConfiguration;
+import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.packages.Type;
 import com.google.devtools.build.lib.rules.genrule.GenRuleBase;
 
@@ -29,5 +32,25 @@ public class BazelGenRule extends GenRuleBase {
       return false;
     }
     return ruleContext.attributes().get("stamp", Type.BOOLEAN);
+  }
+
+  // TODO(https://github.com/bazelbuild/bazel/issues/19132): Remove this override once downstream
+  // projects are migrated.
+  @Override
+  protected CommandHelper.Builder commandHelperBuilder(RuleContext ruleContext) {
+    BazelConfiguration.Options bazelOptions =
+        ruleContext.getConfiguration().getOptions().get(BazelConfiguration.Options.class);
+
+    if (bazelOptions.removeExecTools
+        && ruleContext.attributes().has("exec_tools", BuildType.LABEL_LIST)
+        && !ruleContext.attributes().get("exec_tools", BuildType.LABEL_LIST).isEmpty()) {
+      ruleContext.attributeError(
+          "exec_tools", "genrule.exec_tools has been removed, use tools instead");
+    }
+
+    return CommandHelper.builder(ruleContext)
+        .addToolDependencies("tools")
+        .addToolDependencies("exec_tools")
+        .addToolDependencies("toolchains");
   }
 }
