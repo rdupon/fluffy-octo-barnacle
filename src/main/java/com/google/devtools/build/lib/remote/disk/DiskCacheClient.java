@@ -58,8 +58,8 @@ public class DiskCacheClient implements RemoteCacheClient {
    * @param checkActionResult whether check referenced blobs exist in CAS when checking AC. If this
    *     is {@code true} and blobs referenced by the AC are missing, ignore the AC.
    */
-  public DiskCacheClient(
-      Path root, boolean verifyDownloads, boolean checkActionResult, DigestUtil digestUtil) {
+  public DiskCacheClient(Path root, boolean verifyDownloads, DigestUtil digestUtil)
+      throws IOException {
     this.verifyDownloads = verifyDownloads;
     this.checkActionResult = checkActionResult;
     this.digestUtil = digestUtil;
@@ -71,6 +71,8 @@ public class DiskCacheClient implements RemoteCacheClient {
           root.getChild(
               Ascii.toLowerCase(digestUtil.getDigestFunction().getValueDescriptor().getName()));
     }
+
+    this.root.createDirectoryAndParents();
   }
 
   /** Returns {@code true} if the provided {@code key} is stored in the CAS. */
