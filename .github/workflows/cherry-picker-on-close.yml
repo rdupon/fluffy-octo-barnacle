@@ -1,8 +1,7 @@
 name: cherry-picker-on-close
 
 on:
-  # maybe make it more specific (closed by the cpybara)
-  pull_request:
+  pull_request_target:
     types: [closed]
 
 env:
@@ -10,6 +9,7 @@ env:
 
 jobs:
   cherry-picker-on-close:
+    # if: github.event.pull_request.user.login == 'copybara'
     runs-on: ubuntu-latest
     steps:
       - name: Logging github event
