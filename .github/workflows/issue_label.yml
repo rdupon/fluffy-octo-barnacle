@@ -2,7 +2,7 @@ name: Add issue labels based on the inputs from the issuer
 
 on:
   issues:
-    types: [created]
+    types: [opened, edited]
 
 jobs:
   add-label:
