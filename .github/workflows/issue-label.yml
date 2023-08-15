@@ -14,7 +14,14 @@ jobs:
         shell: bash
         # env:
         #   Issue_Body: ${{ toJSON(github.event.issue.body) }}
+        # grep -oP '(?<=Which category does this issue belong to?aaa).*?(?=aa### Whatas the simplest)' <<< "$Issue_Body"
         run: |
           echo hiya
           Issue_Body="### Description of the bug:aaabbbaa### Which category does this issue belong to?aaaExternal Dependencyaa### Whatas the simplest, easiest way to reproduce this bug? Please provide a minimal example if possible.aaa_No response_aa### Which operating system are you running Bazel on?aaa_No response_aa### What is the output of abazel info releasea?aaa_No response_aa### If abazel info releasea returns adevelopment versiona or aa, tell us how you built Bazel.aaa_No response_aa### Whatas the output of agit remote get-url origin; git rev-parse master; git rev-parse HEADa ?aaa_No response_aa### Is this a regression? If yes, please try to identify the Bazel commit where the bug was introduced.aaa_No response_aa### Have you found anything relevant by searching the web?aa_No response_aa### Any other information, logs, or outputs that you want to share?aa_No response_"
-          grep -oP '(?<=Which category does this issue belong to?aaa).*?(?=aa### Whatas the simplest)' <<< "$Issue_Body"
+          
+          rightpart=${Issue_Body#*Which category does this issue belong to?aaa}
+          output=${rightpart%aa### Whatas the simplest*}
+          echo $output
+          
+          # sed 's/.*Which category does this issue belong to?aaa\(.*\)aa### What.*/\1/' <<< "$Issue_Body"
+          # sed 's/.*Which category does this issue belong to?aaa\(.*\)aa### What.*/\1/' <<< "$Issue_Body"
