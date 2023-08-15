@@ -1,6 +1,4 @@
-name: Add issue labels based on the inputs from the issuer
-
-on:
+name: Add issue labels
   issues:
     types: [opened, edited]
 
@@ -8,6 +6,8 @@ jobs:
   add-label:
     runs-on: ubuntu-latest
     steps:
+      - name: Logging github event
+        run: echo '${{ toJSON(github.event) }}' | jq
       - name: Read the inputs
         shell: bash
         run: |
