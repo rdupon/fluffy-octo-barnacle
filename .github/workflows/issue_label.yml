@@ -1,0 +1,14 @@
+name: Add issue labels based on the inputs from the issuer
+
+on:
+  issues:
+    types: [created]
+
+jobs:
+  add-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read the inputs
+        shell: bash
+        run: |
+          echo helllllo worldddddddd!!!!
