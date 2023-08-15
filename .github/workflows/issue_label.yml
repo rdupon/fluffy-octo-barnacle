@@ -20,4 +20,5 @@ jobs:
           echo "bye!"
           substr="Which category does this issue belong to?"
           prefix=${Issue_Body%%$substr*}
+          echo "$prefix"
 
