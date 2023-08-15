@@ -8,9 +8,16 @@ jobs:
   add-label:
     runs-on: ubuntu-latest
     steps:
-      - name: Logging github event
-        run: echo '${{ toJSON(github.event.issue.body) }}' | jq
+      # - name: Logging github event
+      #   run: echo '${{ toJSON(github.event.issue.body) }}' | jq
       - name: Read the inputs
         shell: bash
+        env:
+          Issue_Body: github.event.issue.body
         run: |
-          echo helllllo worldddddddd!!!!
+          echo helllllo worldddddddd!!!!;
+          echo "$Issue_Body"
+          echo "bye!"
+          substr="Which category does this issue belong to?"
+          prefix=${Issue_Body%%$substr*}
+
