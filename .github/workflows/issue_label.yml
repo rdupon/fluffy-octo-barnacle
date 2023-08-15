@@ -1,4 +1,6 @@
 name: Add issue labels
+
+on:
   issues:
     types: [opened, edited]
 
