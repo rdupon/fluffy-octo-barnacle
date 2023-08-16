@@ -14,9 +14,17 @@ jobs:
         shell: bash
         env:
           Issue_Body: ${{ toJSON(github.event.issue.body) }}
+          # output="\n\n\nC++/Objective-C Rules, Core, Local Execution\n\n###"
         run: |
           echo hiya
           rightpart=${Issue_Body#*Which category does this issue belong to?}
           output=${rightpart%"What's the simplest, easiest way to reproduce this bug?"*}
-          echo $output
-          echo byebye!!!!!
+          new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
+
+          my_array=($(echo $new_string | tr "," "\n"))
+
+          for i in "${my_array[@]}"
+          do
+              echo helllo!!!!!
+              echo $i
+          done
