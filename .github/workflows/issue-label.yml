@@ -17,6 +17,7 @@ jobs:
           # output="\n\n\nC++/Objective-C Rules, Core, Local Execution\n\n###"
         run: |
           echo hiya
+          echo $Issue_Body
           rightpart=${Issue_Body#*Which category does this issue belong to?}
           output=${rightpart%"What's the simplest, easiest way to reproduce this bug?"*}
           new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
