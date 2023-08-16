@@ -21,6 +21,8 @@ jobs:
           output=${rightpart%"What's the simplest, easiest way to reproduce this bug?"*}
           new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
 
+          echo $new_string
+
           my_array=($(echo $new_string | tr "," "\n"))
 
           for i in "${my_array[@]}"
