@@ -16,7 +16,7 @@ jobs:
           Issue_Body: ${{ toJSON(github.event.issue.body) }}
         run: |
           echo hiya          
-          rightpart=${Issue_Body#*Which categor}
-          output=${rightpart%is issue belong to?*}
+          rightpart=${Issue_Body#*Which category does this issue belong to?}
+          output=${rightpart%What's the simplest, easiest way to reproduce this bug?*}
           echo $output
           echo byebye!!!!!
