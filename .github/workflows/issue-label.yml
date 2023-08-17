@@ -19,12 +19,8 @@ jobs:
           rightpart_bug=${Issue_Body#*Which category does this issue belong to?}
           output=${rightpart%"What underlying problem are you trying to solve with this feature?"*}
           new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
-
-
           echo this is the new string!!!!!
           echo $new_string
-
-          echo yoyoyo
         if: {{ contains(github.event.issue.body, 'Description of the feature request') }}
 
       - name: Bug report labeler
@@ -40,8 +36,6 @@ jobs:
           new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
           echo this is the new string!!!!!
           echo $new_string
-
-          echo yoyoyo
         if: {{ contains(github.event.issue.body, 'Description of the bug') }}
 
 
