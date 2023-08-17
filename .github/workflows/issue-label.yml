@@ -17,7 +17,7 @@ jobs:
           # output="\n\n\nC++/Objective-C Rules, Core, Local Execution\n\n###"
         run: |
           echo "$Issue_Body"
-          rightpart_bug=${Issue_Body#*Which category does this issue belong to?}
+          rightpart=${Issue_Body#*Which category does this issue belong to?}
           output=${rightpart%"What underlying problem are you trying to solve with this feature?"*}
           new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
           echo this is the new string!!!!!
@@ -33,7 +33,7 @@ jobs:
           # output="\n\n\nC++/Objective-C Rules, Core, Local Execution\n\n###"
         run: |
           echo "$Issue_Body"
-          rightpart_bug=${Issue_Body#*Which category does this issue belong to?}
+          rightpart=${Issue_Body#*Which category does this issue belong to?}
           output=${rightpart%"What's the simplest, easiest way to reproduce this bug? Please provide a minimal example if possible"*}
           new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
           echo this is the new string!!!!!
