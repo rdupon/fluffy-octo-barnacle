@@ -38,6 +38,9 @@ jobs:
           new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
           echo this is the new string!!!!!
           echo $new_string
+
+          #!/usr/bin/python3
+          print("Hello world!!!!")
         
 
 
