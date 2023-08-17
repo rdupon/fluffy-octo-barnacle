@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Logging github event
-        run: echo a${{ toJSON(github.event.issue.body) }}a | jq
+        run: echo ${{ toJSON(github.event.issue.body) }} | jq
       - name: Read the inputs
         shell: bash
         env:
