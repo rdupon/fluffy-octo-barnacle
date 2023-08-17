@@ -39,8 +39,13 @@ jobs:
           echo this is the new string!!!!!
           echo $new_string
 
-          #!/usr/bin/python3
+          python - << EOF
+
+          myPyString = "Do something on python"
+          print myPyString
           print("Hello world!!!!")
+
+          EOF
         
 
 
