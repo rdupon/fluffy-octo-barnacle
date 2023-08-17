@@ -13,14 +13,13 @@ jobs:
       - name: Read the inputs
         shell: bash
         env:
-          Issue_Body: ${{ toJSON(github.event.issue.body) }}
+          Issue_Body: ${{ toJSON(github.event) }}
           # output="\n\n\nC++/Objective-C Rules, Core, Local Execution\n\n###"
         run: |
-          rightpart_bug=${Issue_Body#*Which category does this issue belong to?}
-          output=${rightpart%"What underlying problem are you trying to solve with this feature?"*}
-          new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
+          # rightpart_bug=${Issue_Body#*Which category does this issue belong to?}
+          # output=${rightpart%"What underlying problem are you trying to solve with this feature?"*}
+          # new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
 
-          echo $new_string
+          # echo $new_string
 
           echo yoyoyo
-
