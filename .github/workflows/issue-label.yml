@@ -42,7 +42,7 @@ jobs:
           python - << EOF
 
           myPyString = "Do something on python"
-          print myPyString
+          print(myPyString)
           print("Hello world!!!!")
 
           EOF
