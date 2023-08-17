@@ -8,19 +8,18 @@ jobs:
   add-label:
     runs-on: ubuntu-latest
     steps:
-      # - name: Logging github event
-      #   run: echo a${{ toJSON(github.event.issue.body) }}a | jq
+      - name: Logging github event
+        run: echo a${{ toJSON(github.event.issue.body) }}a | jq
       - name: Read the inputs
         shell: bash
         env:
           Issue_Body: ${{ toJSON(github.event.issue.body) }}
           # output="\n\n\nC++/Objective-C Rules, Core, Local Execution\n\n###"
         run: |
-          rightpart=${Issue_Body#*Which category does this issue belong to?}
-          output=${rightpart%"What's the simplest, easiest way to reproduce this bug?"*}
+          rightpart_bug=${Issue_Body#*Which category does this issue belong to?}
+          output=${rightpart%"What underlying problem are you trying to solve with this feature?"*}
           new_string=$(echo "$output" | sed 's/\\n//g; s/#//g')
 
-          echo $rightpart
           echo $new_string
 
           echo yoyoyo
