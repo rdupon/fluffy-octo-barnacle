@@ -16,6 +16,7 @@ jobs:
           GITHUB_CONTEXT: ${{ toJson(github) }}
           # output="\n\n\nC++/Objective-C Rules, Core, Local Execution\n\n###"
         run: |
+          
           echo "$Issue_Body"
           rightpart=${Issue_Body#*Which category does this issue belong to?}
           output=${rightpart%"What underlying problem are you trying to solve with this feature?"*}
