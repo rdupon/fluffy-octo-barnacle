@@ -1,4 +1,4 @@
-name: cherry-picker-on-comment
+name: cherry-picker-on-open
 
 on:
   issues:
@@ -8,10 +8,12 @@ env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
-  cherry-picker-on-comment:
+  trigger cherry-pick on comments:
     if: startsWith(github.event.issue.body, 'Forked from')
     runs-on: ubuntu-latest
     steps:
+      - name: Logging github event
+        run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run cherrypicker on comment
         uses: iancha1992/continuous-integration/actions/cherry-picker@feature-cherrypick-phase2
         with:
@@ -20,3 +22,6 @@ jobs:
           milestone-title: ${{ github.event.milestone.title }}
           milestoned-issue-number: ${{ github.event.issue.number }}
           is-prod: False
+  trigger cherry-pick on demand:
+    
+  
