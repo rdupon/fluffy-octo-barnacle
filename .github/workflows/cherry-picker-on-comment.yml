@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run cherrypicker on comment
-        uses: bazelbuild/continuous-integration/actions/cherry-picker
+        uses: bazelbuild/continuous-integration/actions/cherry-picker@master
         with:
           triggered-on: commented
           pr-number: ${{ github.event.issue.body }}
