@@ -23,5 +23,15 @@ jobs:
           milestoned-issue-number: ${{ github.event.issue.number }}
           is-prod: False
   trigger cherry-pick on demand:
-    
-  
+    if: startsWith(github.event.issue.body, '@bazel-io cherry-pick')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Logging github event
+        run: echo '${{ toJSON(github.event) }}' | jq
+      - name: Run cherrypicker on demand
+        uses: iancha1992/continuous-integration/actions/cherry-picker@feature-cherrypick-phase2
+        with:
+          triggered-on: demand
+          milestone-title: ${{ github.event.milestone.title }}
+          milestoned-issue-number: ${{ github.event.issue.number }}
+          is-prod: False
