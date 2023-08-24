@@ -15,7 +15,7 @@ jobs:
       - name: Logging github event
         run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run cherrypicker on comment
-        uses: iancha1992/continuous-integration/actions/cherry-picker@feature-cherrypick-phase2
+        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
         with:
           triggered-on: commented
           pr-number: ${{ github.event.issue.body }}
@@ -29,9 +29,9 @@ jobs:
       - name: Logging github event
         run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run cherrypicker on demand
-        uses: iancha1992/continuous-integration/actions/cherry-picker@feature-cherrypick-phase2
+        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
         with:
-          triggered-on: demand
+          triggered-on: ondemand
           milestone-title: ${{ github.event.milestone.title }}
           milestoned-issue-number: ${{ github.event.issue.number }}
           is-prod: False
