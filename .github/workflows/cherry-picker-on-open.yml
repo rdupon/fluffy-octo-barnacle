@@ -34,4 +34,5 @@ jobs:
           triggered-on: ondemand
           milestone-title: ${{ github.event.milestone.title }}
           milestoned-issue-number: ${{ github.event.issue.number }}
+          issue-body: ${{ github.event.issue.body }}
           is-prod: False
