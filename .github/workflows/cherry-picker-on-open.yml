@@ -8,7 +8,7 @@ env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
-  trigger cherry-pick on comments:
+  trigger-cherrypick-on-comments:
     if: startsWith(github.event.issue.body, 'Forked from')
     runs-on: ubuntu-latest
     steps:
@@ -22,7 +22,7 @@ jobs:
           milestone-title: ${{ github.event.milestone.title }}
           milestoned-issue-number: ${{ github.event.issue.number }}
           is-prod: False
-  trigger cherry-pick on demand:
+  trigger-cherrypick-ondemand:
     if: startsWith(github.event.issue.body, '@bazel-io cherry-pick')
     runs-on: ubuntu-latest
     steps:
