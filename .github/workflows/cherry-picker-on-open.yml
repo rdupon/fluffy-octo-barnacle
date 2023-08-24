@@ -8,7 +8,7 @@ env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
-  trigger-cherrypick-on-comments:
+  trigger-cherrypick-on-comment:
     if: startsWith(github.event.issue.body, 'Forked from')
     runs-on: ubuntu-latest
     steps:
