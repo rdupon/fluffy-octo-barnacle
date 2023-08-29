@@ -23,9 +23,11 @@ env:
 
 jobs:
   cherry-picker-on-close:
-    if: github.event.sender.login == 'copybara-service[bot]'
+    # if: github.event.sender.login == 'copybara-service[bot]'
     runs-on: ubuntu-latest
     steps:
+      - name: Logging github event
+        run: '${{ github.event.sender.login }}'
       - name: Run cherrypicker on close
         uses: bazelbuild/continuous-integration/actions/cherry-picker@master
         with:
