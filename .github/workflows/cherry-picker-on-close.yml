@@ -9,6 +9,7 @@ env:
 
 jobs:
   cherry-picker-on-close:
+    if: github.event.sender.login == 'copybara-service[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Logging github event
