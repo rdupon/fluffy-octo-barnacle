@@ -19,7 +19,7 @@ env:
 #         with:
 #           triggered-on: closed
 #           pr-number: ${{ github.event.number }}
-#           is-prod: False
+#           is-prod: Falseto
 
 jobs:
   cherry-picker-on-close:
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: New Logging github event
-        run: '${{ github.event.sender.login }}'
+        run: echo '${{ github.event.sender.login }}'
       - name: Run cherrypicker on close
         uses: bazelbuild/continuous-integration/actions/cherry-picker@master
         with:
