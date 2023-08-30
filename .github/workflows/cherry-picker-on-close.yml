@@ -10,8 +10,23 @@ env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
-  cherry-picker-on-close:
+  cherry-picker-on-closed-pr:
     # if: github.event.sender.login == 'copybara-service[bot]'
+    if: contains(github.event, "pull-request")
+    runs-on: ubuntu-latest
+    steps:
+      - name: Logging github event
+        run: echo '${{ toJSON(github.event) }}'
+      - name: Run cherrypicker on close
+        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
+        with:
+          triggered-on: closed
+          pr-number: ${{ github.event.number }}
+          is-prod: False
+  
+  cherry-picker-on-closed-issue:
+    # if: github.event.sender.login == 'copybara-service[bot]'
+    if: contains(github.event, "pull-request")
     runs-on: ubuntu-latest
     steps:
       - name: Logging github event
