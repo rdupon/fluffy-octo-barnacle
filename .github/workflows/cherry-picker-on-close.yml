@@ -12,8 +12,6 @@ env:
 jobs:
   cherry-picker-on-closed-pr:
     # if: github.event.sender.login == 'copybara-service[bot]'
-    # if: contains(github.event, "pull_request")
-    if: github.event.pull_request
     runs-on: ubuntu-latest
     steps:
       - name: Logging github event
