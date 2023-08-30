@@ -11,7 +11,8 @@ env:
 
 jobs:
   cherry-picker-on-close:
-    # if: github.event.sender.login == 'copybara-service[bot]'
+    # if: github.event.action == 'closed' && github.event.sender.login == 'copybara-service[bot]' 
+    if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Logging github event
@@ -31,8 +32,11 @@ jobs:
           pr-number: ${{ github.event.issue.number }}
           is-prod: False
   cherry-picker-on-milestone:
+    if: github.event.action == 'milestoned'
     runs-on: ubuntu-latest
     steps:
+      - name: Logging github event
+        run: echo '${{ toJSON(github.event) }}'
       - if: startsWith(github.event.issue.body, 'Forked from')
         name: Run cherrypicker on comment
         uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
