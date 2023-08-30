@@ -10,7 +10,7 @@ env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
-  cherry-picker-on-close:
+  cherry-picker-on-closed:
     # if: github.event.action == 'closed' && github.event.sender.login == 'copybara-service[bot]' 
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
@@ -31,7 +31,7 @@ jobs:
           triggered-on: closed
           pr-number: ${{ github.event.issue.number }}
           is-prod: False
-  cherry-picker-on-milestone:
+  cherry-picker-on-milestoned:
     if: github.event.action == 'milestoned'
     runs-on: ubuntu-latest
     steps:
