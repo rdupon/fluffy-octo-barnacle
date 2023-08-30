@@ -30,20 +30,3 @@ jobs:
           triggered-on: closed
           pr-number: ${{ github.event.issue.number }}
           is-prod: False
-  
-
-
-
-
-  # cherry-picker-on-closed-issue:
-  #   if: github.event.issue
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Logging github event
-  #       run: echo '${{ toJSON(github.event) }}'
-  #     - name: Run cherrypicker on close
-  #       uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
-  #       with:
-  #         triggered-on: closed
-  #         pr-number: ${{ github.event.issue.number }}
-  #         is-prod: False
