@@ -1,16 +1,16 @@
-name: cherry-picker-on-close
+name: cherry-picker
 
 on:
   pull_request_target:
     types: [closed]
   issues:
-    types: [closed]
+    types: [closed, milestoned]
 
 env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
-  cherry-picker-on-closed-pr:
+  cherry-picker-on-close:
     # if: github.event.sender.login == 'copybara-service[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -29,4 +29,26 @@ jobs:
         with:
           triggered-on: closed
           pr-number: ${{ github.event.issue.number }}
+          is-prod: False
+  cherry-picker-on-milestone:
+    runs-on: ubuntu-latest
+    steps:
+      - if: startsWith(github.event.issue.body, 'Forked from')
+        name: Run cherrypicker on comment
+        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
+        with:
+          triggered-on: commented
+          pr-number: ${{ github.event.issue.body }}
+          milestone-title: ${{ github.event.milestone.title }}
+          milestoned-issue-number: ${{ github.event.issue.number }}
+          is-prod: False
+      - if: startsWith(github.event.issue.body, '@bazel-io cherry-pick')
+        name: Run cherrypicker on demand
+        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
+        with:
+          triggered-on: ondemand
+          milestone-title: ${{ github.event.milestone.title }}
+          milestoned-issue-number: ${{ github.event.issue.number }}
+          issue-title: ${{ github.event.issue.title }}
+          issue-body: ${{ github.event.issue.body }}
           is-prod: False
