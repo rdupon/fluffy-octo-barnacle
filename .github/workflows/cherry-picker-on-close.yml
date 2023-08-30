@@ -26,7 +26,7 @@ jobs:
   
   cherry-picker-on-closed-issue:
     # if: github.event.sender.login == 'copybara-service[bot]'
-    if: contains(github.event, "pull-request")
+    if: contains(github.event, "issue")
     runs-on: ubuntu-latest
     steps:
       - name: Logging github event
@@ -35,5 +35,5 @@ jobs:
         uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
         with:
           triggered-on: closed
-          pr-number: ${{ github.event.number }}
+          pr-number: ${{ github.event.issue.number }}
           is-prod: False
