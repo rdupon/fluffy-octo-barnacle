@@ -5,36 +5,20 @@ on:
     types: [closed]
   issues:
     types: [closed]
-  
-  
 
 env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
-
-# jobs:
-#   cherry-picker-on-close:
-#     if: github.event.sender.login == 'copybara-service[bot]'
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Logging github event
-#         run: echo '${{ toJSON(github.event) }}' | jq
-#       - name: Run cherrypicker on close
-#         uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
-#         with:
-#           triggered-on: closed
-#           pr-number: ${{ github.event.number }}
-#           is-prod: Falseto
 
 jobs:
   cherry-picker-on-close:
     # if: github.event.sender.login == 'copybara-service[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: New Logging github event
-        run: echo '${{ github.event.sender.login }}'
+      - name: Logging github event
+        run: echo '${{ github.event }}'
       - name: Run cherrypicker on close
-        uses: bazelbuild/continuous-integration/actions/cherry-picker@master
+        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
         with:
           triggered-on: closed
           pr-number: ${{ github.event.number }}
-          is-prod: True
+          is-prod: False
