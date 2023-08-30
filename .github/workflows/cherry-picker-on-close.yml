@@ -3,6 +3,10 @@ name: cherry-picker-on-close
 on:
   pull_request_target:
     types: [closed]
+  issues:
+    types: [closed]
+  
+  
 
 env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
