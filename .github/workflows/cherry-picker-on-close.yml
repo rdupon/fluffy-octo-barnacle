@@ -18,24 +18,34 @@ jobs:
     steps:
       - name: Logging github event
         run: echo '${{ toJSON(github.event) }}'
-      - name: Run cherrypicker on close
+      - if: github.event.pull_request
+        name: Run cherrypicker on closed PR
         uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
         with:
           triggered-on: closed
           pr-number: ${{ github.event.number }}
           is-prod: False
-  
-  cherry-picker-on-closed-issue:
-    # if: github.event.sender.login == 'copybara-service[bot]'
-    # if: contains(github.event, "issue")
-    if: github.event.issue
-    runs-on: ubuntu-latest
-    steps:
-      - name: Logging github event
-        run: echo '${{ toJSON(github.event) }}'
-      - name: Run cherrypicker on close
+      - if: github.event.issue
+        name: Run cherrypicker on closed issue
         uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
         with:
           triggered-on: closed
           pr-number: ${{ github.event.issue.number }}
           is-prod: False
+  
+
+
+
+
+  # cherry-picker-on-closed-issue:
+  #   if: github.event.issue
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Logging github event
+  #       run: echo '${{ toJSON(github.event) }}'
+  #     - name: Run cherrypicker on close
+  #       uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
+  #       with:
+  #         triggered-on: closed
+  #         pr-number: ${{ github.event.issue.number }}
+  #         is-prod: False
