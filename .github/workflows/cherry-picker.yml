@@ -39,7 +39,7 @@ jobs:
         run: echo '${{ toJSON(github.event) }}'
       - if: startsWith(github.event.issue.body, 'Forked from')
         name: Run cherrypicker on comment
-        uses: bazelbuild/continuous-integration/actions/cherry-picker@8e5a455aae36cdcce8604ab298ace487825239b2
+        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
         with:
           triggered-on: commented
           pr-number: ${{ github.event.issue.body }}
