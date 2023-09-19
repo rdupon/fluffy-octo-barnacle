@@ -10,7 +10,7 @@ body:
     id: commit_ids
     attributes:
       label: >
-        Please put the commit ID's (at least first 6 digits of the commit ID's). If multiple, then please separate by commas. \n
+        Please put the commit ID's (at least first 6 digits of the commit ID's). If multiple, then please separate by commas.
         Example: 9e90a6, f1da12
   - type: dropdown
     id: subteam
@@ -46,5 +46,5 @@ body:
     id: reviewer
     attributes:
       label: >
-        Please provide the reviewers of the PR once it's created after cherry-picking. \n
+        Please provide the reviewers of the PR once it's created after cherry-picking.
         Example: @iancha1992, @keertk
