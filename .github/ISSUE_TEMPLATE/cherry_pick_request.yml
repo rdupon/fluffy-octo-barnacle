@@ -1,5 +1,5 @@
 name: Cherry-pick request
-description: Provide commit ID's to cherry-pick into a specific branch
+description: Provide commit ID's to cherry-pick into a specific branch. **Please, do NOT forget to milestone this.** If this is not milestoned, then the cherry-picks will not trigger.
 # labels: ["type: bug", "untriaged"]
 # assignees:
 #   - pavank1992
@@ -48,9 +48,3 @@ body:
       label: >
         Please provide the reviewers of the PR once it's created after cherry-picking.
         Example: @iancha1992, @keertk
-  - type: input
-    id: branch_name
-    attributes:
-      label: >
-        Please provide a release branch name.
-        Example: release-6.3.0
