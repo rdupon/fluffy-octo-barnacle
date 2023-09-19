@@ -48,3 +48,9 @@ body:
       label: >
         Please provide the reviewers of the PR once it's created after cherry-picking.
         Example: @iancha1992, @keertk
+  - type: input
+    id: branch_name
+    attributes:
+      label: >
+        Please provide a release branch name.
+        Example: release-6.3.0

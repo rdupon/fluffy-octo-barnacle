@@ -4,7 +4,7 @@ on:
   pull_request_target:
     types: [closed]
   issues:
-    types: [closed, milestoned]
+    types: [closed, milestoned, opened]
 
 env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
