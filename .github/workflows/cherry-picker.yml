@@ -15,7 +15,6 @@ jobs:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
-      # - name: Logging github event
       - if: github.event.pull_request
         name: Run cherrypicker on closed PR
         uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
@@ -34,7 +33,6 @@ jobs:
     if: github.event.action == 'milestoned'
     runs-on: ubuntu-latest
     steps:
-      # - name: Logging github event
       - if: startsWith(github.event.issue.body, 'Forked from')
         name: Run cherrypicker on comment
         uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
