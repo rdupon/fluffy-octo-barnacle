@@ -12,8 +12,8 @@ jobs:
         if: contains(github.event.issue.body, 'Description of the feature request')
         shell: bash
         env:
-          Issue_Body: ${{ toJSON(github.event.issue.body) }}
-          GITHUB_CONTEXT: ${{ toJson(github) }}
+          # Issue_Body: ${{ toJSON(github.event.issue.body) }}
+          # GITHUB_CONTEXT: ${{ toJson(github) }}
           # output="\n\n\nC++/Objective-C Rules, Core, Local Execution\n\n###"
         run: |
           
@@ -29,8 +29,8 @@ jobs:
         if: contains(github.event.issue.body, 'Description of the bug')
         shell: bash
         env:
-          Issue_Body: ${{ toJSON(github.event.issue.body) }}
-          GITHUB_CONTEXT: ${{ toJson(github) }}
+          # Issue_Body: ${{ toJSON(github.event.issue.body) }}
+          # GITHUB_CONTEXT: ${{ toJson(github) }}
           # output="\n\n\nC++/Objective-C Rules, Core, Local Execution\n\n###"
         run: |
           echo "$Issue_Body"

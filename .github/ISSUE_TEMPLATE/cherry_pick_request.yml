@@ -42,7 +42,7 @@ body:
         - team-Configurability
         - team-Starlark-Integration
         - team-Starlark-Interpreter
-  - type: input
+  - type: textarea
     id: reviewer
     attributes:
       label: >
