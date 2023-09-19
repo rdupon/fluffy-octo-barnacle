@@ -1,87 +1,49 @@
 name: Cherry-pick request
-description: Provide commit ID's to cherry-pick them into a branch
-labels: ["type: feature request", "untriaged"]
-assignees:
-  - sgowroji
+description: Provide commit ID's to cherry-pick into a specific branch
+# labels: ["type: bug", "untriaged"]
+# assignees:
+#   - pavank1992
+#   - sgowroji
+#   - iancha1992
 body:
-  - type: markdown
-    attributes:
-      value: >
-        **Attention:** if this is a _question_ about how to build / test / query / deploy using
-        Bazel, or a _discussion starter_, please start a new thread at Bazel's
-        [GitHub Discussions](https://github.com/bazelbuild/bazel/discussions), send it to
-        bazel-discuss@googlegroups.com, or discuss on [Bazel Slack](https://slack.bazel.build/)
-        instead!
   - type: textarea
-    id: desc
+    id: commit_ids
     attributes:
       label: >
-        Description of the feature request:
+        Please put the commit ID's (at least first 6 digits of the commit ID's). If multiple, then please separate by commas.
+        Example: 9e90a6, f1da12
   - type: dropdown
     id: subteam
     attributes:
       label: >
         Which category does this issue belong to?
       description: >
-        Answering this will help us triage this issue faster and more accurately to the
-        relevant team(s).
+        Please, add a label(s). If you cannot find a label you want, then please add the label to the PR on your own when it's created.
       multiple: true
       options:
-        - Android
-        - C++/Objective-C Rules
-        - CLI
-        - Configurability
-        - Core
-        - Documentation
-        - External Dependency
-        - Java Rules
-        - Loading API
-        - Local Execution
-        - Performance
-        - Python Rules
-        - Remote Execution
-        - Rules API
-        - Server-Side Rules
-        - Starlark Integration
-        - Starlark Interpreter
-  - type: textarea
-    id: problem
-    attributes:
-      label: >
-        What underlying problem are you trying to solve with this feature?
+        - team-CLI
+        - team-OSS
+        - team-Core
+        - team-Bazel
+        - team-Android
+        - z-team-Apple
+        - team-Rules-API
+        - team-Rules-CPP
+        - team-Local-Exec
+        - team-Rules-Java
+        - team-Rules-ObjC
+        - team-Loading-API
+        - team-Performance
+        - team-Remote-Exec
+        - team-ExternalDeps
+        - team-Rules-Python
+        - team-Rules-Server
+        - team-Documentation
+        - team-Configurability
+        - team-Starlark-Integration
+        - team-Starlark-Interpreter
   - type: input
-    id: os
+    id: reviewer
     attributes:
       label: >
-        Which operating system are you running Bazel on?
-  - type: input
-    id: version
-    attributes:
-      label: >
-        What is the output of `bazel info release`?
-  - type: textarea
-    id: version-follow-up
-    attributes:
-      label: >
-        If `bazel info release` returns `development version` or `(@non-git)`, tell us how you built
-        Bazel.
-  - type: textarea
-    id: source
-    attributes:
-      label: >
-        What's the output of `git remote get-url origin; git rev-parse master; git rev-parse HEAD` ?
-      render: text
-  - type: textarea
-    id: relevant-info
-    attributes:
-      label: Have you found anything relevant by searching the web?
-      description: >
-        Places to look:
-
-         * StackOverflow: http://stackoverflow.com/questions/tagged/bazel
-         * GitHub issues: https://github.com/bazelbuild/bazel/issues
-         * Email threads on https://groups.google.com/forum/#!forum/bazel-discuss
-  - type: textarea
-    id: extras
-    attributes:
-      label: Any other information, logs, or outputs that you want to share?
+        Reviewers. Example: @iancha1992, @keertk
