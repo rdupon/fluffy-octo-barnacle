@@ -6,8 +6,8 @@ on:
   issues:
     types: [closed, milestoned, opened]
 
-env:
-  GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
+# env:
+#   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
   cherry-picker-on-closed:
@@ -53,6 +53,5 @@ jobs:
       #     issue-body: ${{ github.event.issue.body }}
       #     is-prod: False
       - name: Run cherrypicker on demand
-        run: |
-          echo "helo world!"
+        run: echo '${{ toJSON(github.event) }}' | jq
         
