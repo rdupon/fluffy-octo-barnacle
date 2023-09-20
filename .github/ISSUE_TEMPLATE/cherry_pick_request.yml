@@ -1,5 +1,5 @@
 name: Cherry-pick request
-description: Provide commit ID's to cherry-pick into a specific branch. **Please, do NOT forget to milestone this.** If this is not milestoned, then the cherry-picks will not trigger.
+description: Provide commit IDs to cherry-pick into a specific branch. **Please, do NOT forget to milestone this.** If this is not milestoned, then the cherry-picks will not trigger.
 # labels: ["type: bug", "untriaged"]
 # assignees:
 #   - pavank1992
@@ -10,7 +10,7 @@ body:
     id: commit_ids
     attributes:
       label: >
-        Please put the commit ID's (at least first 6 digits of the commit ID's). If multiple, then please separate by commas.
+        Please put the commit IDs (at least first 6 digits of the commit IDs). If multiple, then please separate by commas.
         Example: 9e90a6, f1da12
   - type: dropdown
     id: subteam
@@ -18,7 +18,7 @@ body:
       label: >
         Which category does this issue belong to?
       description: >
-        Please, add a label(s). If you cannot find a label you want, then please add the label to the PR on your own when it's created.
+        Please, add a label(s). If you cannot find a label you want, then please add the label to the PR on your own when its created.
       multiple: true
       options:
         - team-CLI
@@ -46,5 +46,5 @@ body:
     id: reviewer
     attributes:
       label: >
-        Please provide the reviewers of the PR once it's created after cherry-picking.
+        Please provide the reviewers of the PR once it is created after cherry-picking.
         Example: @iancha1992, @keertk
