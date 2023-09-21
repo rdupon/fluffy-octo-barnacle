@@ -42,16 +42,16 @@ jobs:
           milestone-title: ${{ github.event.milestone.title }}
           milestoned-issue-number: ${{ github.event.issue.number }}
           is-prod: False
-      # - if: startsWith(github.event.issue.body, '### Please put the commit IDs (at least first 6 digits of the commit IDs).')
-      #   name: Run cherrypicker on demand
-      #   uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
-      #   with:
-      #     triggered-on: ondemand
-      #     milestone-title: ${{ github.event.milestone.title }}
-      #     milestoned-issue-number: ${{ github.event.issue.number }}
-      #     issue-title: ${{ github.event.issue.title }}
-      #     issue-body: ${{ github.event.issue.body }}
-      #     is-prod: False
-      - name: Run cherrypicker on demand
-        run: echo '${{ toJSON(github.event) }}' | jq
+      - if: startsWith(github.event.issue.body, '### Please put the commit IDs (at least first 6 digits of the commit IDs).')
+        name: Run cherrypicker on demand
+        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
+        with:
+          triggered-on: ondemand
+          milestone-title: ${{ github.event.milestone.title }}
+          milestoned-issue-number: ${{ github.event.issue.number }}
+          issue-title: ${{ github.event.issue.title }}
+          issue-body: ${{ github.event.issue.body }}
+          is-prod: False
+      # - name: Run cherrypicker on demand
+      #   run: echo '${{ toJSON(github.event) }}' | jq
         
