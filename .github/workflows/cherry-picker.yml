@@ -52,6 +52,5 @@ jobs:
           issue-title: ${{ github.event.issue.title }}
           issue-body: ${{ github.event.issue.body }}
           is-prod: False
-      - name: Run cherrypicker on demand
-        run: echo '${{ toJSON(github) }}' | jq
+          
         
