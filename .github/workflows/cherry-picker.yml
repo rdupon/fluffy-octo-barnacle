@@ -52,5 +52,5 @@ jobs:
           issue-title: ${{ github.event.issue.title }}
           issue-body: ${{ github.event.issue.body }}
           is-prod: False
-          
-        
+      - name: Logging github event
+        run: echo '${{ toJSON(github.event) }}' | jq
