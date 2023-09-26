@@ -7,6 +7,8 @@ body:
         **Note:** Provide commit IDs to cherry-pick into a specific release branch. Once the issue has been created, **please add this to the corresponding release milestone** to trigger the cherry-pick workflow.
   - type: textarea
     id: commit_ids
+    validations:
+      required: true
     attributes:
       label: >
         Commit IDs
@@ -14,6 +16,8 @@ body:
         Please enter the commit ID(s) to be cherry-picked. E.g. 9e90a6, f1da12
   - type: dropdown
     id: subteam
+    validations:
+      required: true
     attributes:
       label: >
         Category
@@ -43,6 +47,8 @@ body:
         - team-Starlark-Integration
         - team-Starlark-Interpreter
   - type: textarea
+    validations:
+      required: true
     id: reviewer
     attributes:
       label: >
