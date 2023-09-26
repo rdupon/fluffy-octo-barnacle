@@ -9,8 +9,9 @@ body:
     id: commit_ids
     attributes:
       label: >
-        Please put the commit IDs (at least first 6 digits of the commit IDs). If multiple, then please separate by commas.
-        Example: 9e90a6, f1da12
+        Commit IDs
+      description: >
+        Please enter the commit ID(s) to be cherry-picked. E.g. 9e90a6, f1da12
   - type: dropdown
     id: subteam
     attributes:
