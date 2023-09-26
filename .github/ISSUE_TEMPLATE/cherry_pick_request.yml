@@ -1,10 +1,10 @@
 name: Cherry-pick request
 description: Use this template to cherry-pick commits into a release branch
 body:
-  # - type: markdown
-  #   attributes:
-  #   value: >
-  #     **Note:** Provide commit IDs to cherry-pick into a specific release branch. Once the issue has been created, **please add this to the corresponding release milestone** to trigger the cherry-pick workflow.
+  - type: markdown
+    attributes:
+    value: |
+      **Note:** Provide commit IDs to cherry-pick into a specific release branch. Once the issue has been created, **please add this to the corresponding release milestone** to trigger the cherry-pick workflow.
   - type: textarea
     id: commit_ids
     attributes:
