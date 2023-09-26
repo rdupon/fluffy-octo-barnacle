@@ -6,8 +6,8 @@ on:
   issues:
     types: [closed, milestoned, opened]
 
-env:
-  GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
+# env:
+#   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
   cherry-picker-on-closed:
