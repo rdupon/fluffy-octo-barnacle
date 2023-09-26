@@ -16,9 +16,9 @@ body:
     id: subteam
     attributes:
       label: >
-        Which category does this issue belong to?
+        Category
       description: >
-        Please, add a label(s). If you cannot find a label you want, then please add the label to the PR on your own when its created.
+        Which category does this issue belong to? Please select the corresponding label(s).
       multiple: true
       options:
         - team-CLI
@@ -46,5 +46,6 @@ body:
     id: reviewer
     attributes:
       label: >
-        Please provide the reviewers of the PR once it is created after cherry-picking.
-        Example: @iancha1992, @keertk
+        Reviewers
+      description: >
+        Please provide reviewers for the cherry-pick PR. E.g. @iancha1992, @bazelbuild/triage
