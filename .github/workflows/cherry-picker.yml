@@ -4,7 +4,7 @@ on:
   pull_request_target:
     types: [closed]
   issues:
-    types: [closed, milestoned, opened]
+    types: [closed, milestoned]
 
 env:
   GH_TOKEN: ${{ secrets.NEW_IAN_CLASSIC_TOKEN }}
@@ -15,6 +15,10 @@ jobs:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6b3083af2869dc3314a0257a42f4af696cc79ba3
+        with:
+          egress-policy: audit
       - if: github.event.pull_request
         name: Run cherrypicker on closed PR
         uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
@@ -33,6 +37,10 @@ jobs:
     if: github.event.action == 'milestoned'
     runs-on: ubuntu-latest
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6b3083af2869dc3314a0257a42f4af696cc79ba3
+        with:
+          egress-policy: audit
       - if: startsWith(github.event.issue.body, 'Forked from')
         name: Run cherrypicker on comment
         uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
