@@ -22,6 +22,9 @@ import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.actions.FileValue;
 import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.LockfileMode;
 import com.google.devtools.build.lib.cmdline.LabelConstants;
+import com.google.devtools.build.lib.profiler.Profiler;
+import com.google.devtools.build.lib.profiler.ProfilerTask;
+import com.google.devtools.build.lib.profiler.SilentCloseable;
 import com.google.devtools.build.lib.server.FailureDetails.ExternalDeps.Code;
 import com.google.devtools.build.lib.skyframe.PrecomputedValue.Precomputed;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
@@ -36,12 +39,17 @@ import com.google.devtools.build.skyframe.SkyValue;
 import com.google.gson.JsonSyntaxException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
 /** Reads the contents of the lock file into its value. */
 public class BazelLockFileFunction implements SkyFunction {
 
   public static final Precomputed<LockfileMode> LOCKFILE_MODE = new Precomputed<>("lockfile_mode");
+
+  private static final Pattern LOCKFILE_VERSION_PATTERN =
+      Pattern.compile("\"lockFileVersion\":\\s*(\\d+)");
 
   private final Path rootDirectory;
 
@@ -75,7 +83,7 @@ public class BazelLockFileFunction implements SkyFunction {
       return null;
     }
 
-    try {
+    try (SilentCloseable c = Profiler.instance().profile(ProfilerTask.BZLMOD, "parse lockfile")) {
       return getLockfileValue(lockfilePath);
     } catch (IOException | JsonSyntaxException | NullPointerException e) {
       throw new BazelLockfileFunctionException(
@@ -92,13 +100,21 @@ public class BazelLockFileFunction implements SkyFunction {
     BazelLockFileValue bazelLockFileValue;
     try {
       String json = FileSystemUtils.readContent(lockfilePath.asPath(), UTF_8);
-      bazelLockFileValue =
-          GsonTypeAdapterUtil.createLockFileGson(
-                  lockfilePath
-                      .asPath()
-                      .getParentDirectory()
-                      .getRelative(LabelConstants.MODULE_DOT_BAZEL_FILE_NAME))
-              .fromJson(json, BazelLockFileValue.class);
+      Matcher matcher = LOCKFILE_VERSION_PATTERN.matcher(json);
+      int version = matcher.find() ? Integer.parseInt(matcher.group(1)) : -1;
+      if (version == BazelLockFileValue.LOCK_FILE_VERSION) {
+        bazelLockFileValue =
+            GsonTypeAdapterUtil.createLockFileGson(
+                    lockfilePath
+                        .asPath()
+                        .getParentDirectory()
+                        .getRelative(LabelConstants.MODULE_DOT_BAZEL_FILE_NAME))
+                .fromJson(json, BazelLockFileValue.class);
+      } else {
+        // This is an old version, needs to be updated
+        // Keep old version to recognize the problem in error mode
+        bazelLockFileValue = EMPTY_LOCKFILE.toBuilder().setLockFileVersion(version).build();
+      }
     } catch (FileNotFoundException e) {
       bazelLockFileValue = EMPTY_LOCKFILE;
     }

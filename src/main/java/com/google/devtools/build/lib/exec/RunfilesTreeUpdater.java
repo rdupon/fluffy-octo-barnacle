@@ -13,11 +13,15 @@
 // limitations under the License.
 package com.google.devtools.build.lib.exec;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.ExecException;
 import com.google.devtools.build.lib.actions.RunfilesSupplier;
 import com.google.devtools.build.lib.analysis.RunfilesSupport;
+import com.google.devtools.build.lib.analysis.config.BuildConfigurationValue.RunfileSymlinksMode;
 import com.google.devtools.build.lib.runtime.CommandEnvironment;
 import com.google.devtools.build.lib.util.io.OutErr;
 import com.google.devtools.build.lib.vfs.DigestUtils;
@@ -28,6 +32,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -69,9 +74,10 @@ public class RunfilesTreeUpdater {
   public void updateRunfiles(
       RunfilesSupplier runfilesSupplier, ImmutableMap<String, String> env, OutErr outErr)
       throws ExecException, IOException, InterruptedException {
-    for (Map.Entry<PathFragment, Map<PathFragment, Artifact>> runfiles :
+    for (Map.Entry<PathFragment, Map<PathFragment, Artifact>> entry :
         runfilesSupplier.getMappings().entrySet()) {
-      PathFragment runfilesDir = runfiles.getKey();
+      PathFragment runfilesDir = entry.getKey();
+      Map<PathFragment, Artifact> runfilesMapping = entry.getValue();
       if (runfilesSupplier.isBuildRunfileLinks(runfilesDir)) {
         continue;
       }
@@ -83,7 +89,11 @@ public class RunfilesTreeUpdater {
         // We are the first attempt; update the runfiles tree and mark the future complete.
         try {
           updateRunfilesTree(
-              runfilesDir, env, outErr, !runfilesSupplier.isRunfileLinksEnabled(runfilesDir));
+              runfilesDir,
+              runfilesMapping,
+              env,
+              outErr,
+              checkNotNull(runfilesSupplier.getRunfileSymlinksMode(runfilesDir)));
           freshFuture.complete(null);
         } catch (Exception e) {
           freshFuture.completeExceptionally(e);
@@ -91,16 +101,28 @@ public class RunfilesTreeUpdater {
         }
       } else {
         // There was a previous attempt; wait for it to complete.
-        priorFuture.join();
+        try {
+          priorFuture.join();
+        } catch (CompletionException e) {
+          Throwable cause = e.getCause();
+          if (cause != null) {
+            Throwables.throwIfInstanceOf(cause, ExecException.class);
+            Throwables.throwIfInstanceOf(cause, IOException.class);
+            Throwables.throwIfInstanceOf(cause, InterruptedException.class);
+            Throwables.throwIfUnchecked(cause);
+          }
+          throw new AssertionError("Unexpected exception", e);
+        }
       }
     }
   }
 
   private void updateRunfilesTree(
       PathFragment runfilesDir,
+      Map<PathFragment, Artifact> runfilesMapping,
       ImmutableMap<String, String> env,
       OutErr outErr,
-      boolean manifestOnly)
+      RunfileSymlinksMode runfileSymlinksMode)
       throws IOException, ExecException, InterruptedException {
     Path runfilesDirPath = execRoot.getRelative(runfilesDir);
     Path inputManifest = RunfilesSupport.inputManifestPath(runfilesDirPath);
@@ -131,6 +153,18 @@ public class RunfilesTreeUpdater {
 
     SymlinkTreeHelper helper =
         new SymlinkTreeHelper(inputManifest, runfilesDirPath, /* filesetTree= */ false);
-    helper.createSymlinks(execRoot, outErr, binTools, env, manifestOnly);
+
+    switch (runfileSymlinksMode) {
+      case SKIP:
+        helper.linkManifest();
+        break;
+      case EXTERNAL:
+        helper.createSymlinksUsingCommand(execRoot, binTools, env, outErr);
+        break;
+      case INTERNAL:
+        helper.createSymlinksDirectly(runfilesDirPath, runfilesMapping);
+        outputManifest.createSymbolicLink(inputManifest);
+        break;
+    }
   }
 }

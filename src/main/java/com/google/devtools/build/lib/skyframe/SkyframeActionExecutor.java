@@ -43,6 +43,8 @@ import com.google.devtools.build.lib.actions.ActionKeyContext;
 import com.google.devtools.build.lib.actions.ActionLogBufferPathGenerator;
 import com.google.devtools.build.lib.actions.ActionLookupData;
 import com.google.devtools.build.lib.actions.ActionMiddlemanEvent;
+import com.google.devtools.build.lib.actions.ActionOutputDirectoryHelper;
+import com.google.devtools.build.lib.actions.ActionOutputDirectoryHelper.CreateOutputDirectoryException;
 import com.google.devtools.build.lib.actions.ActionOwner;
 import com.google.devtools.build.lib.actions.ActionResult;
 import com.google.devtools.build.lib.actions.ActionResultReceivedEvent;
@@ -99,7 +101,6 @@ import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.skyframe.ActionExecutionState.ActionStep;
 import com.google.devtools.build.lib.skyframe.ActionExecutionState.ActionStepOrResult;
 import com.google.devtools.build.lib.skyframe.ActionExecutionState.SharedActionCallback;
-import com.google.devtools.build.lib.skyframe.ActionOutputDirectoryHelper.CreateOutputDirectoryException;
 import com.google.devtools.build.lib.util.CrashFailureDetails;
 import com.google.devtools.build.lib.util.DetailedExitCode;
 import com.google.devtools.build.lib.util.ResourceUsage;
@@ -218,6 +219,7 @@ public final class SkyframeActionExecutor {
   private final AtomicReference<ActionExecutionStatusReporter> statusReporterRef;
   private OutputService outputService;
   private boolean finalizeActions;
+  private boolean rewindingEnabled;
   private final Supplier<ImmutableList<Root>> sourceRootSupplier;
 
   private DiscoveredModulesPruner discoveredModulesPruner;
@@ -280,6 +282,7 @@ public final class SkyframeActionExecutor {
       Executor executor,
       OptionsProvider options,
       ActionCacheChecker actionCacheChecker,
+      ActionOutputDirectoryHelper outputDirectoryHelper,
       OutputService outputService,
       boolean trackIncrementalState) {
     this.reporter = checkNotNull(reporter);
@@ -298,10 +301,9 @@ public final class SkyframeActionExecutor {
     this.options = options;
     // Cache some option values for performance, since we consult them on every action.
     this.finalizeActions = buildRequestOptions.finalizeActions;
+    this.rewindingEnabled = buildRequestOptions.rewindLostInputs;
     this.outputService = outputService;
-
-    this.outputDirectoryHelper =
-        new ActionOutputDirectoryHelper(buildRequestOptions.directoryCreationCacheSpec);
+    this.outputDirectoryHelper = outputDirectoryHelper;
 
     // Retaining discovered inputs is only worthwhile for incremental builds or builds with extra
     // actions, which consume their shadowed action's discovered inputs.
@@ -367,8 +369,7 @@ public final class SkyframeActionExecutor {
   FileSystem createActionFileSystem(
       String relativeOutputPath,
       ActionInputMap inputArtifactData,
-      Iterable<Artifact> outputArtifacts,
-      boolean rewindingEnabled) {
+      Iterable<Artifact> outputArtifacts) {
     return outputService.createActionFileSystem(
         executorEngine.getFileSystem(),
         executorEngine.getExecRoot().asFragment(),
@@ -425,42 +426,49 @@ public final class SkyframeActionExecutor {
         new OwnerlessArtifactWrapper(action.getPrimaryOutput()));
   }
 
-  void resetPreviouslyCompletedAction(ActionLookupData actionLookupData, Action action) {
+  /**
+   * Called to prepare action execution states for rewinding after {@code failedAction} observed
+   * lost inputs.
+   */
+  void prepareForRewinding(
+      ActionLookupData failedKey,
+      Action failedAction,
+      ImmutableList<SkyKey> lostDiscoveredInputs,
+      ImmutableList<Action> depsToRewind) {
+    var ownerlessArtifactWrapper = new OwnerlessArtifactWrapper(failedAction.getPrimaryOutput());
+    ActionExecutionState state = buildActionMap.get(ownerlessArtifactWrapper);
+    if (state != null) {
+      // If an action failed from lost inputs during input discovery then it won't have a state to
+      // obsolete.
+      state.obsolete(failedKey, buildActionMap, ownerlessArtifactWrapper);
+    }
+    if (!lostDiscoveredInputs.isEmpty()) {
+      lostDiscoveredInputsMap.put(ownerlessArtifactWrapper, lostDiscoveredInputs);
+    }
+    if (!actionFileSystemType().inMemoryFileSystem()) {
+      outputDirectoryHelper.invalidateTreeArtifactDirectoryCreation(failedAction.getOutputs());
+    }
+    for (Action dep : depsToRewind) {
+      prepareDepForRewinding(failedKey, dep);
+    }
+  }
+
+  private void prepareDepForRewinding(ActionLookupData failedKey, Action dep) {
     OwnerlessArtifactWrapper ownerlessArtifactWrapper =
-        new OwnerlessArtifactWrapper(action.getPrimaryOutput());
+        new OwnerlessArtifactWrapper(dep.getPrimaryOutput());
     ActionExecutionState actionExecutionState = buildActionMap.get(ownerlessArtifactWrapper);
     if (actionExecutionState != null) {
-      actionExecutionState.obsolete(actionLookupData, buildActionMap, ownerlessArtifactWrapper);
+      actionExecutionState.obsolete(failedKey, buildActionMap, ownerlessArtifactWrapper);
     }
     completedAndResetActions.add(ownerlessArtifactWrapper);
     if (!actionFileSystemType().inMemoryFileSystem()) {
-      outputDirectoryHelper.invalidateTreeArtifactDirectoryCreation(action.getOutputs());
+      outputDirectoryHelper.invalidateTreeArtifactDirectoryCreation(dep.getOutputs());
     }
   }
 
   @Nullable
   ImmutableList<SkyKey> getLostDiscoveredInputs(Action action) {
     return lostDiscoveredInputsMap.get(new OwnerlessArtifactWrapper(action.getPrimaryOutput()));
-  }
-
-  void resetRewindingAction(
-      ActionLookupData actionLookupData,
-      Action action,
-      ImmutableList<SkyKey> lostDiscoveredInputs) {
-    OwnerlessArtifactWrapper ownerlessArtifactWrapper =
-        new OwnerlessArtifactWrapper(action.getPrimaryOutput());
-    ActionExecutionState state = buildActionMap.get(ownerlessArtifactWrapper);
-    if (state != null) {
-      // If an action failed from lost inputs during input discovery then it won't have a state to
-      // obsolete.
-      state.obsolete(actionLookupData, buildActionMap, ownerlessArtifactWrapper);
-    }
-    if (!lostDiscoveredInputs.isEmpty()) {
-      lostDiscoveredInputsMap.put(ownerlessArtifactWrapper, lostDiscoveredInputs);
-    }
-    if (!actionFileSystemType().inMemoryFileSystem()) {
-      outputDirectoryHelper.invalidateTreeArtifactDirectoryCreation(action.getOutputs());
-    }
   }
 
   void noteActionEvaluationStarted(ActionLookupData actionLookupData, Action action) {
@@ -495,7 +503,6 @@ public final class SkyframeActionExecutor {
 
     ActionExecutionContext actionExecutionContext =
         getContext(
-            env,
             action,
             metadataHandler,
             metadataHandler,
@@ -567,7 +574,6 @@ public final class SkyframeActionExecutor {
   }
 
   private ActionExecutionContext getContext(
-      Environment env,
       Action action,
       InputMetadataProvider inputMetadataProvider,
       OutputMetadataStore outputMetadataStore,
@@ -586,7 +592,7 @@ public final class SkyframeActionExecutor {
         actionInputPrefetcher,
         actionKeyContext,
         outputMetadataStore,
-        env.restartPermitted(),
+        rewindingEnabled,
         lostInputsCheck(actionFileSystem, action, outputService),
         fileOutErr,
         selectEventHandler(emitProgressEvents),
@@ -824,7 +830,7 @@ public final class SkyframeActionExecutor {
             actionInputPrefetcher,
             actionKeyContext,
             outputMetadataStore,
-            env.restartPermitted(),
+            rewindingEnabled,
             lostInputsCheck(actionFileSystem, action, outputService),
             fileOutErr,
             eventHandler,
@@ -1339,7 +1345,7 @@ public final class SkyframeActionExecutor {
     } catch (CreateOutputDirectoryException e) {
       throw toActionExecutionException(
           String.format(
-              "failed to create output directory '%s': %s", e.directoryPath, e.getMessage()),
+              "failed to create output directory '%s': %s", e.getDirectoryPath(), e.getMessage()),
           e,
           action,
           null,
@@ -1353,7 +1359,7 @@ public final class SkyframeActionExecutor {
     } catch (CreateOutputDirectoryException e) {
       throw toActionExecutionException(
           String.format(
-              "failed to create output directory '%s': %s", e.directoryPath, e.getMessage()),
+              "failed to create output directory '%s': %s", e.getDirectoryPath(), e.getMessage()),
           e,
           action,
           /* actionOutput= */ null,

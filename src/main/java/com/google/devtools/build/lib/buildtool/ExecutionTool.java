@@ -333,7 +333,11 @@ public class ExecutionTool {
     try (SilentCloseable c =
         Profiler.instance().profile("prepareSkyframeActionExecutorForExecution")) {
       skyframeExecutor.prepareSkyframeActionExecutorForExecution(
-          env.getReporter(), executor, request, skyframeBuilder.getActionCacheChecker());
+          env.getReporter(),
+          executor,
+          request,
+          skyframeBuilder.getActionCacheChecker(),
+          skyframeBuilder.getActionOutputDirectoryHelper());
     }
 
     env.getEventBus()
@@ -976,13 +980,13 @@ public class ExecutionTool {
         modifiedOutputFiles,
         env.getFileCache(),
         prefetcher,
+        env.getOutputDirectoryHelper(),
         env.getRuntime().getBugReporter());
   }
 
   @VisibleForTesting
   public static void configureResourceManager(ResourceManager resourceMgr, BuildRequest request) {
     ExecutionOptions options = request.getOptions(ExecutionOptions.class);
-    resourceMgr.setPrioritizeLocalActions(options.prioritizeLocalActions);
     ImmutableMap<String, Float> extraResources =
         options.localExtraResources.stream()
             .collect(

@@ -45,7 +45,6 @@ java_library(
         ":repository/repository_directory_value",
         ":repository/repository_function",
         ":repository/resolved_file_value",
-        ":repository/resolved_hashes_value",
         ":repository/workspace_attribute_mapper",
         ":repository/workspace_base_rule",
         ":repository/workspace_configured_target_factory",
@@ -114,6 +113,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/analysis:test/test_configuration",
         "//src/main/java/com/google/devtools/build/lib/analysis:transitive_info_collection",
         "//src/main/java/com/google/devtools/build/lib/analysis:transitive_info_provider",
+        "//src/main/java/com/google/devtools/build/lib/cmdline",
         "//src/main/java/com/google/devtools/build/lib/concurrent",
         "//src/main/java/com/google/devtools/build/lib/events",
         "//src/main/java/com/google/devtools/build/lib/packages",
@@ -309,6 +309,7 @@ java_library(
         ":repository/new_repository_file_handler",
         ":repository/repository_directory_value",
         ":repository/repository_function",
+        ":repository/resolved_file_value",
         "//src/main/java/com/google/devtools/build/lib/actions:file_metadata",
         "//src/main/java/com/google/devtools/build/lib/analysis:analysis_cluster",
         "//src/main/java/com/google/devtools/build/lib/analysis:blaze_directories",
@@ -391,7 +392,6 @@ java_library(
         ":repository/local_repository_rule",
         ":repository/repository_directory_value",
         ":repository/resolved_file_value",
-        ":repository/resolved_hashes_value",
         ":repository/workspace_attribute_mapper",
         ":repository/workspace_file_helper",
         "//src/main/java/com/google/devtools/build/lib/actions:file_metadata",
@@ -437,18 +437,6 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/skyframe:sky_functions",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec",
         "//src/main/java/com/google/devtools/build/lib/vfs",
-        "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
-        "//third_party:guava",
-    ],
-)
-
-java_library(
-    name = "repository/resolved_hashes_value",
-    srcs = ["repository/ResolvedHashesValue.java"],
-    deps = [
-        "//src/main/java/com/google/devtools/build/lib/skyframe:sky_functions",
-        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec",
-        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec:serialization-constant",
         "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
     ],
 )

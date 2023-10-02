@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.flogger.GoogleLogger;
 import com.google.devtools.build.lib.actions.ThreadStateReceiver;
+import com.google.devtools.build.lib.analysis.RuleDefinitionEnvironment;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier;
 import com.google.devtools.build.lib.cmdline.RepositoryMapping;
@@ -50,6 +51,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Semaphore;
+import javax.annotation.Nullable;
 import net.starlark.java.eval.EvalException;
 import net.starlark.java.eval.Module;
 import net.starlark.java.eval.Mutability;
@@ -240,7 +243,8 @@ public final class PackageFactory {
       Optional<String> associatedModuleVersion,
       StarlarkSemantics starlarkSemantics,
       RepositoryMapping repositoryMapping,
-      RepositoryMapping mainRepositoryMapping) {
+      RepositoryMapping mainRepositoryMapping,
+      @Nullable Semaphore cpuBoundSemaphore) {
     return new Package.Builder(
         packageSettings,
         packageId,
@@ -249,7 +253,8 @@ public final class PackageFactory {
         associatedModuleVersion,
         starlarkSemantics.getBool(BuildLanguageOptions.INCOMPATIBLE_NO_IMPLICIT_FILE_EXPORT),
         repositoryMapping,
-        mainRepositoryMapping);
+        mainRepositoryMapping,
+        cpuBoundSemaphore);
   }
 
   /** Returns a new {@link NonSkyframeGlobber}. */
@@ -408,7 +413,11 @@ public final class PackageFactory {
       }
     }
 
+    Semaphore cpuSemaphore = pkgBuilder.getCpuBoundSemaphore();
     try {
+      if (cpuSemaphore != null) {
+        cpuSemaphore.acquire();
+      }
       executeBuildFileImpl(
           pkgBuilder, buildFileProgram, predeclared, loadedModules, starlarkSemantics, globber);
     } catch (InterruptedException e) {
@@ -416,6 +425,9 @@ public final class PackageFactory {
       throw e;
     } finally {
       globber.onCompletion();
+      if (cpuSemaphore != null) {
+        cpuSemaphore.release();
+      }
     }
   }
 
@@ -440,16 +452,20 @@ public final class PackageFactory {
 
       new BazelStarlarkContext(
               BazelStarlarkContext.Phase.LOADING,
-              ruleClassProvider.getToolsRepository(),
-              /* fragmentNameToClass= */ null,
-              new SymbolGenerator<>(pkgBuilder.getPackageIdentifier()),
-              /* analysisRuleLabel= */ null,
-              ruleClassProvider.getNetworkAllowlistForTests().orElse(null))
+              new SymbolGenerator<>(pkgBuilder.getPackageIdentifier()))
           .storeInThread(thread);
 
       // TODO(adonovan): save this as a field in BazelStarlarkContext.
       // It needn't be a second thread-local.
       thread.setThreadLocal(PackageContext.class, pkgContext);
+
+      // TODO(b/291752414): The rule definition environment shouldn't be needed at BUILD evaluation
+      // time EXCEPT for analysis_test, which needs the tools repository for use in
+      // StarlarkRuleClassFunctions#createRule. So we set it here as a thread-local to be retrieved
+      // by StarlarkTestingModule#analysisTest.
+      // TODO(b/236456122): Though instead of being a separate thread-local, we should stick it and
+      // PackageContext on a new PackageThreadContext object.
+      thread.setThreadLocal(RuleDefinitionEnvironment.class, ruleClassProvider);
 
       try {
         Starlark.execFileProgram(buildFileProgram, module, thread);

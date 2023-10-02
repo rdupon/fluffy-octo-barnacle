@@ -43,7 +43,6 @@ import com.google.devtools.build.lib.analysis.ResolvedToolchainContext;
 import com.google.devtools.build.lib.analysis.TargetAndConfiguration;
 import com.google.devtools.build.lib.analysis.ToolchainCollection;
 import com.google.devtools.build.lib.analysis.TransitiveDependencyState;
-import com.google.devtools.build.lib.analysis.TransitiveDependencyState.PrerequisitePackageFunction;
 import com.google.devtools.build.lib.analysis.config.BuildConfigurationValue;
 import com.google.devtools.build.lib.analysis.config.ConfigConditions;
 import com.google.devtools.build.lib.analysis.config.DependencyEvaluationException;
@@ -80,6 +79,7 @@ import com.google.devtools.build.lib.skyframe.AspectKeyCreator.AspectKey;
 import com.google.devtools.build.lib.skyframe.BzlLoadFunction.BzlLoadFailedException;
 import com.google.devtools.build.lib.skyframe.ConfiguredTargetEvaluationExceptions.UnreportedException;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor.BuildViewProvider;
+import com.google.devtools.build.lib.skyframe.config.BuildConfigurationKey;
 import com.google.devtools.build.lib.skyframe.toolchains.ToolchainException;
 import com.google.devtools.build.lib.skyframe.toolchains.UnloadedToolchainContext;
 import com.google.devtools.build.lib.util.OrderedSetMultimap;
@@ -202,7 +202,6 @@ final class AspectFunction implements SkyFunction {
       return AspectValue.create(
           key,
           aspect,
-          target.getLocation(),
           ConfiguredAspect.forNonapplicableTarget(),
           computeDependenciesState.transitivePackages());
     }
@@ -243,7 +242,6 @@ final class AspectFunction implements SkyFunction {
           return AspectValue.create(
               key,
               aspect,
-              target.getLocation(),
               ConfiguredAspect.forNonapplicableTarget(),
               computeDependenciesState.transitivePackages());
         }
@@ -407,6 +405,7 @@ final class AspectFunction implements SkyFunction {
               new DependencyContextProducer(
                   unloadedToolchainContextsInputs,
                   targetAndConfiguration,
+                  key.getConfigurationKey(),
                   state.transitiveState,
                   (DependencyContextProducer.ResultSink) state));
     }
@@ -693,7 +692,6 @@ final class AspectFunction implements SkyFunction {
     return AspectValue.create(
         originalKey,
         aspect,
-        originalTarget.getLocation(),
         ConfiguredAspect.forAlias(real),
         transitivePackages);
   }
@@ -802,7 +800,6 @@ final class AspectFunction implements SkyFunction {
     return AspectValue.create(
         key,
         aspect,
-        associatedTarget.getLocation(),
         configuredAspect,
         transitiveState.transitivePackages());
   }

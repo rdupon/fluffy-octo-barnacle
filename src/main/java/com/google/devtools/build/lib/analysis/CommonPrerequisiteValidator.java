@@ -13,6 +13,7 @@
 // limitations under the License.
 package com.google.devtools.build.lib.analysis;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.devtools.build.lib.packages.NonconfigurableAttributeMapper.attributeOrNull;
 
 import com.google.devtools.build.lib.analysis.AliasProvider.TargetMode;
@@ -20,12 +21,15 @@ import com.google.devtools.build.lib.analysis.RuleContext.PrerequisiteValidator;
 import com.google.devtools.build.lib.analysis.configuredtargets.PackageGroupConfiguredTarget;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.PackageIdentifier;
+import com.google.devtools.build.lib.packages.Aspect;
 import com.google.devtools.build.lib.packages.Attribute;
 import com.google.devtools.build.lib.packages.FunctionSplitTransitionAllowlist;
 import com.google.devtools.build.lib.packages.InputFile;
 import com.google.devtools.build.lib.packages.NonconfigurableAttributeMapper;
 import com.google.devtools.build.lib.packages.RawAttributeMapper;
 import com.google.devtools.build.lib.packages.Rule;
+import com.google.devtools.build.lib.packages.RuleClass;
+import com.google.devtools.build.lib.packages.StarlarkAspectClass;
 import com.google.devtools.build.lib.packages.Type;
 import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.skyframe.ConfiguredTargetAndData;
@@ -103,16 +107,40 @@ public abstract class CommonPrerequisiteValidator implements PrerequisiteValidat
 
     if (!toolCheckAtDefinition
         || !attribute.isImplicit()
-        || rule.getRuleClassObject().getRuleDefinitionEnvironmentLabel() == null) {
+        || attribute.getName().equals(RuleClass.CONFIG_SETTING_DEPS_ATTRIBUTE)
+        || !context.isStarlarkRuleOrAspect()) {
       // Default check: The attribute must be visible from the target.
       if (!context.isVisible(prerequisite.getConfiguredTarget())) {
         handleVisibilityConflict(context, prerequisite, rule.getLabel());
       }
     } else {
-      // For implicit attributes, check if the prerequisite is visible from the location of the
-      // rule definition
-      Label implicitDefinition = rule.getRuleClassObject().getRuleDefinitionEnvironmentLabel();
-      if (!RuleContext.isVisible(implicitDefinition, prerequisite.getConfiguredTarget())) {
+      // For implicit attributes of Starlark rules or aspects, check if the prerequisite is visible
+      // from the location of the definition that declares the attribute. Only perform this check
+      // for the current aspect.
+      Label implicitDefinition = null;
+      Aspect mainAspect = context.getMainAspect();
+      if (mainAspect != null) {
+        // Only verify visibility of implicit dependencies of the current aspect. Implicit
+        // dependencies of other aspects as well as the rule itself are checked when they are
+        // evaluated.
+        if (mainAspect.getDefinition().getAttributes().containsKey(attrName)) {
+          StarlarkAspectClass aspectClass = (StarlarkAspectClass) mainAspect.getAspectClass();
+          // Never null since we already checked that the aspect is Starlark-defined.
+          implicitDefinition = checkNotNull(aspectClass.getExtensionLabel());
+        }
+      } else {
+        // Never null since we already checked that the rule is a Starlark rule.
+        implicitDefinition =
+            checkNotNull(rule.getRuleClassObject().getRuleDefinitionEnvironmentLabel());
+      }
+      // Check that the prerequisite is visible from the definition. As a fallback, check if the
+      // prerequisite is visible from the target so that adopting this new style of checking
+      // visibility is not a breaking change.
+      if (implicitDefinition != null
+          && !RuleContext.isVisible(implicitDefinition, prerequisite.getConfiguredTarget())
+          && !context.isVisible(prerequisite.getConfiguredTarget())) {
+        // In the error message, always suggest making the prerequisite visible from the definition,
+        // not the target.
         handleVisibilityConflict(context, prerequisite, implicitDefinition);
       }
     }

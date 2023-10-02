@@ -1,5 +1,6 @@
-load("//:distdir_deps.bzl", "gen_workspace_stanza")
+load("@bazel_pip_dev_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("//:distdir_deps.bzl", "gen_workspace_stanza")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -34,6 +35,10 @@ py_library(
         "//tools/build_rules:__pkg__",
         "//tools/ctexplain:__pkg__",
         "//tools/python:__pkg__",
+    ],
+    deps = [
+        "//third_party/py/abseil",
+        requirement("bazel-runfiles"),
     ],
 )
 
@@ -280,9 +285,21 @@ py_test(
     name = "bazel_lockfile_test",
     size = "medium",
     srcs = ["bzlmod/bazel_lockfile_test.py"],
+    shard_count = 5,
     tags = [
         "requires-network",
     ],
+    deps = [
+        ":bzlmod_test_utils",
+        ":test_base",
+    ],
+)
+
+py_test(
+    name = "bazel_fetch_test",
+    size = "medium",
+    srcs = ["bzlmod/bazel_fetch_test.py"],
+    data = ["//tools/build_defs/repo:http_src"],
     deps = [
         ":bzlmod_test_utils",
         ":test_base",

@@ -81,7 +81,9 @@ public final class DependencyContextProducerWithCompatibilityCheck
       // If `defaultToolchainContextKey` is null, there's no platform info, incompatibility check
       // or toolchain resolution. Short-circuits and computes only the ConfigConditions.
       return new ConfigConditionsProducer(
-          targetAndConfiguration,
+          targetAndConfiguration.getTarget(),
+          targetAndConfiguration.getTarget().getLabel(),
+          configuredTargetKey.getConfigurationKey(),
           /* targetPlatformInfo= */ null,
           transitiveState,
           (ConfigConditionsProducer.ResultSink) this,
@@ -94,10 +96,7 @@ public final class DependencyContextProducerWithCompatibilityCheck
     // Checks for incompatibility before toolchain resolution so that known missing
     // toolchains mark the target incompatible instead of failing the build.
     return new PlatformInfoProducer(
-        ConfiguredTargetKey.builder()
-            .setLabel(platformConfiguration.getTargetPlatform())
-            .setConfigurationKey(defaultToolchainContextKey.configurationKey())
-            .build(),
+        platformConfiguration.getTargetPlatform(),
         (PlatformInfoProducer.ResultSink) this,
         /* runAfter= */ this::computeConfigConditions);
   }
@@ -119,7 +118,9 @@ public final class DependencyContextProducerWithCompatibilityCheck
     }
 
     return new ConfigConditionsProducer(
-        targetAndConfiguration,
+        targetAndConfiguration.getTarget(),
+        targetAndConfiguration.getTarget().getLabel(),
+        configuredTargetKey.getConfigurationKey(),
         targetPlatformInfo,
         transitiveState,
         (ConfigConditionsProducer.ResultSink) this,

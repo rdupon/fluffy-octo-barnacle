@@ -15,10 +15,12 @@ package com.google.devtools.build.lib.exec;
 
 import build.bazel.remote.execution.v2.Platform;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.flogger.GoogleLogger;
 import com.google.common.hash.HashCode;
 import com.google.devtools.build.lib.actions.ActionContext;
 import com.google.devtools.build.lib.actions.ActionInput;
+import com.google.devtools.build.lib.actions.Artifact.TreeFileArtifact;
 import com.google.devtools.build.lib.actions.ExecException;
 import com.google.devtools.build.lib.actions.FileArtifactValue;
 import com.google.devtools.build.lib.actions.InputMetadataProvider;
@@ -102,6 +104,8 @@ public class SpawnLogContext implements ActionContext {
       builder.addEnvironmentVariablesBuilder().setName(var).setValue(env.get(var));
     }
 
+    ImmutableSet<? extends ActionInput> toolFiles = spawn.getToolFiles().toSet();
+
     try (SilentCloseable c = Profiler.instance().profile("logSpawn/inputs")) {
       for (Map.Entry<PathFragment, ActionInput> e : inputMap.entrySet()) {
         ActionInput input = e.getValue();
@@ -113,7 +117,15 @@ public class SpawnLogContext implements ActionContext {
           listDirectoryContents(inputPath, builder::addInputs, inputMetadataProvider);
         } else {
           Digest digest = computeDigest(input, null, inputMetadataProvider, xattrProvider);
-          builder.addInputsBuilder().setPath(input.getExecPathString()).setDigest(digest);
+          boolean isTool =
+              toolFiles.contains(input)
+                  || (input instanceof TreeFileArtifact
+                      && toolFiles.contains(((TreeFileArtifact) input).getParent()));
+          builder
+              .addInputsBuilder()
+              .setPath(input.getExecPathString())
+              .setDigest(digest)
+              .setIsTool(isTool);
         }
       }
     } catch (IOException e) {
@@ -177,50 +189,48 @@ public class SpawnLogContext implements ActionContext {
       builder.setTargetLabel(spawn.getTargetLabel());
     }
 
-    if (executionOptions != null && executionOptions.executionLogSpawnMetrics) {
-      SpawnMetrics metrics = result.getMetrics();
-      Protos.SpawnMetrics.Builder metricsBuilder = builder.getMetricsBuilder();
-      if (metrics.totalTimeInMs() != 0L) {
-        metricsBuilder.setTotalTime(millisToProto(metrics.totalTimeInMs()));
-      }
-      if (metrics.parseTimeInMs() != 0L) {
-        metricsBuilder.setParseTime(millisToProto(metrics.parseTimeInMs()));
-      }
-      if (metrics.networkTimeInMs() != 0L) {
-        metricsBuilder.setNetworkTime(millisToProto(metrics.networkTimeInMs()));
-      }
-      if (metrics.fetchTimeInMs() != 0L) {
-        metricsBuilder.setFetchTime(millisToProto(metrics.fetchTimeInMs()));
-      }
-      if (metrics.queueTimeInMs() != 0L) {
-        metricsBuilder.setQueueTime(millisToProto(metrics.queueTimeInMs()));
-      }
-      if (metrics.setupTimeInMs() != 0L) {
-        metricsBuilder.setSetupTime(millisToProto(metrics.setupTimeInMs()));
-      }
-      if (metrics.uploadTimeInMs() != 0L) {
-        metricsBuilder.setUploadTime(millisToProto(metrics.uploadTimeInMs()));
-      }
-      if (metrics.executionWallTimeInMs() != 0L) {
-        metricsBuilder.setExecutionWallTime(millisToProto(metrics.executionWallTimeInMs()));
-      }
-      if (metrics.processOutputsTimeInMs() != 0L) {
-        metricsBuilder.setProcessOutputsTime(millisToProto(metrics.processOutputsTimeInMs()));
-      }
-      if (metrics.retryTimeInMs() != 0L) {
-        metricsBuilder.setRetryTime(millisToProto(metrics.retryTimeInMs()));
-      }
-      metricsBuilder.setInputBytes(metrics.inputBytes());
-      metricsBuilder.setInputFiles(metrics.inputFiles());
-      metricsBuilder.setMemoryEstimateBytes(metrics.memoryEstimate());
-      metricsBuilder.setInputBytesLimit(metrics.inputBytesLimit());
-      metricsBuilder.setInputFilesLimit(metrics.inputFilesLimit());
-      metricsBuilder.setOutputBytesLimit(metrics.outputBytesLimit());
-      metricsBuilder.setOutputFilesLimit(metrics.outputFilesLimit());
-      metricsBuilder.setMemoryBytesLimit(metrics.memoryLimit());
-      if (metrics.timeLimitInMs() != 0L) {
-        metricsBuilder.setTimeLimit(millisToProto(metrics.timeLimitInMs()));
-      }
+    SpawnMetrics metrics = result.getMetrics();
+    Protos.SpawnMetrics.Builder metricsBuilder = builder.getMetricsBuilder();
+    if (metrics.totalTimeInMs() != 0L) {
+      metricsBuilder.setTotalTime(millisToProto(metrics.totalTimeInMs()));
+    }
+    if (metrics.parseTimeInMs() != 0L) {
+      metricsBuilder.setParseTime(millisToProto(metrics.parseTimeInMs()));
+    }
+    if (metrics.networkTimeInMs() != 0L) {
+      metricsBuilder.setNetworkTime(millisToProto(metrics.networkTimeInMs()));
+    }
+    if (metrics.fetchTimeInMs() != 0L) {
+      metricsBuilder.setFetchTime(millisToProto(metrics.fetchTimeInMs()));
+    }
+    if (metrics.queueTimeInMs() != 0L) {
+      metricsBuilder.setQueueTime(millisToProto(metrics.queueTimeInMs()));
+    }
+    if (metrics.setupTimeInMs() != 0L) {
+      metricsBuilder.setSetupTime(millisToProto(metrics.setupTimeInMs()));
+    }
+    if (metrics.uploadTimeInMs() != 0L) {
+      metricsBuilder.setUploadTime(millisToProto(metrics.uploadTimeInMs()));
+    }
+    if (metrics.executionWallTimeInMs() != 0L) {
+      metricsBuilder.setExecutionWallTime(millisToProto(metrics.executionWallTimeInMs()));
+    }
+    if (metrics.processOutputsTimeInMs() != 0L) {
+      metricsBuilder.setProcessOutputsTime(millisToProto(metrics.processOutputsTimeInMs()));
+    }
+    if (metrics.retryTimeInMs() != 0L) {
+      metricsBuilder.setRetryTime(millisToProto(metrics.retryTimeInMs()));
+    }
+    metricsBuilder.setInputBytes(metrics.inputBytes());
+    metricsBuilder.setInputFiles(metrics.inputFiles());
+    metricsBuilder.setMemoryEstimateBytes(metrics.memoryEstimate());
+    metricsBuilder.setInputBytesLimit(metrics.inputBytesLimit());
+    metricsBuilder.setInputFilesLimit(metrics.inputFilesLimit());
+    metricsBuilder.setOutputBytesLimit(metrics.outputBytesLimit());
+    metricsBuilder.setOutputFilesLimit(metrics.outputFilesLimit());
+    metricsBuilder.setMemoryBytesLimit(metrics.memoryLimit());
+    if (metrics.timeLimitInMs() != 0L) {
+      metricsBuilder.setTimeLimit(millisToProto(metrics.timeLimitInMs()));
     }
 
     try (SilentCloseable c = Profiler.instance().profile("logSpawn/write")) {

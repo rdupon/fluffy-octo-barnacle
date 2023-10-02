@@ -1,9 +1,9 @@
 # Packaging
 
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("//src:release_archive.bzl", "release_archive")
 load(":embedded_tools.bzl", "srcsfile")
 load(":rule_size_test.bzl", "rule_size_test")
-load("//src:release_archive.bzl", "release_archive")
 
 package(default_applicable_licenses = ["@io_bazel//:license"])
 
@@ -127,7 +127,11 @@ JAVA_TOOLS = [
     ],
 ) for suffix, jdk in {
     "_jdk_allmodules": [":embedded_jdk_allmodules"],
-    "_jdk_minimal": [":embedded_jdk_minimal"],
+    "_jdk_minimal": select({
+        # We cannot minimize the JDK during cross compiling for Windows arm64
+        "//src/conditions:windows_arm64": [":embedded_jdk_vanilla"],
+        "//conditions:default": [":embedded_jdk_minimal"],
+    }),
     "_nojdk": [],
 }.items()]
 
@@ -150,8 +154,11 @@ filegroup(
         "//src/conditions:darwin_arm64": [
             "@openjdk_macos_aarch64_vanilla//file",
         ],
-        "//src/conditions:windows": [
+        "//src/conditions:windows_x86_64": [
             "@openjdk_win_vanilla//file",
+        ],
+        "//src/conditions:windows_arm64": [
+            "@openjdk_win_arm64_vanilla//file",
         ],
         "//src/conditions:linux_aarch64": [
             "@openjdk_linux_aarch64_vanilla//file",
@@ -367,6 +374,7 @@ filegroup(
         "//src/test/tools:srcs",
         "//src/tools/android:srcs",
         "//src/tools/android/java/com/google/devtools/build/android:srcs",
+        "//src/tools/bzlmod:srcs",
         "//src/tools/execlog:srcs",
         "//src/tools/launcher:srcs",
         "//src/tools/remote:srcs",
@@ -553,10 +561,10 @@ filegroup(
     name = "test_repos",
     srcs = [
         "@android_gmaven_r8//jar:file",
-        "@android_tools_for_testing//:WORKSPACE",
+        "@android_tools//:all_android_tools_deploy.jar",
         "@bazel_skylib//:WORKSPACE",
-        "@com_google_protobuf//:WORKSPACE",
-        "@remote_coverage_tools//:WORKSPACE",
+        "@com_google_protobuf//:LICENSE",
+        "@remote_coverage_tools//:all_lcov_merger_lib",
         "@remote_java_tools//:GenClass",
         "@remote_java_tools_darwin_arm64//:java_tools/src/tools/singlejar/singlejar_local",
         "@remote_java_tools_darwin_x86_64//:java_tools/src/tools/singlejar/singlejar_local",
@@ -564,22 +572,19 @@ filegroup(
         "@remote_java_tools_windows//:java_tools/src/tools/singlejar/singlejar_local.exe",
         "@remotejdk11_linux//:WORKSPACE",
         "@remotejdk11_linux_aarch64//:WORKSPACE",
-        "@remotejdk11_linux_ppc64le//:WORKSPACE",
-        "@remotejdk11_linux_s390x//:WORKSPACE",
         "@remotejdk11_macos//:WORKSPACE",
         "@remotejdk11_macos_aarch64//:WORKSPACE",
         "@remotejdk11_win//:WORKSPACE",
-        "@remotejdk11_win_arm64//:WORKSPACE",
-        "@rules_cc//:WORKSPACE",
+        "@rules_cc//:LICENSE",
         "@rules_java//:WORKSPACE",
-        "@rules_java_builtin_for_testing//:WORKSPACE",
+        "@rules_license//:WORKSPACE",
         "@rules_pkg//:WORKSPACE",
-        "@rules_proto//:WORKSPACE",
+        "@rules_proto//proto:defs",
         "@rules_python//:WORKSPACE",
-        "@rules_testing//:WORKSPACE.bazel",
+        "@rules_testing//:LICENSE",
     ] + [
         "@remotejdk%s_%s//:WORKSPACE" % (version, os)
         for version in ("17", "20")
-        for os in ("macos", "macos_aarch64", "linux", "win") + (("linux_s390x", "win_arm64") if version != "20" else ())
+        for os in ("macos", "macos_aarch64", "linux", "win")
     ],
 )

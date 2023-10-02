@@ -20,7 +20,6 @@ import com.google.devtools.build.lib.actions.Artifact.SpecialArtifact;
 import com.google.devtools.build.lib.actions.Artifact.TreeFileArtifact;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
 import com.google.devtools.build.lib.packages.util.MockJ2ObjcSupport;
-import com.google.devtools.build.lib.packages.util.MockObjcSupport;
 import com.google.devtools.build.lib.packages.util.MockProtoSupport;
 import com.google.devtools.build.lib.testutil.TestConstants;
 import java.util.Collection;
@@ -74,13 +73,12 @@ public class J2ObjcLibraryTest extends ObjcRuleTestCase {
         "    name = 'transpile',",
         "    tags = ['__J2OBJC_LIBRARY_MIGRATION_DO_NOT_USE_WILL_BREAK__'],",
         "    deps = ['test'])");
-    MockObjcSupport.setup(mockToolsConfig);
     MockJ2ObjcSupport.setup(mockToolsConfig);
     MockProtoSupport.setup(mockToolsConfig);
 
     useConfiguration("--proto_toolchain_for_java=//tools/proto/toolchains:java");
 
-    mockToolsConfig.create(
+    mockToolsConfig.append(
         "tools/proto/toolchains/BUILD",
         TestConstants.LOAD_PROTO_LANG_TOOLCHAIN,
         "package(default_visibility=['//visibility:public'])",
@@ -90,7 +88,6 @@ public class J2ObjcLibraryTest extends ObjcRuleTestCase {
         "proto_lang_toolchain(name='java_stubby_compatible13_immutable', "
             + "command_line = 'dont_care')");
 
-    MockProtoSupport.setupWorkspace(scratch);
     invalidatePackages();
   }
 }

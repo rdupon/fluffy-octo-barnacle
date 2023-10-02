@@ -129,6 +129,7 @@ public class BazelDepGraphFunctionTest extends FoundationTestCase {
                 .put(SkyFunctions.BAZEL_LOCK_FILE, new BazelLockFileFunction(rootDirectory))
                 .put(SkyFunctions.BAZEL_DEP_GRAPH, new BazelDepGraphFunction())
                 .put(SkyFunctions.BAZEL_MODULE_RESOLUTION, resolutionFunctionMock)
+                .put(SkyFunctions.REPO_SPEC, new RepoSpecFunction(registryFactory))
                 .put(
                     SkyFunctions.CLIENT_ENVIRONMENT_VARIABLE,
                     new ClientEnvironmentFunction(
@@ -292,7 +293,7 @@ public class BazelDepGraphFunctionTest extends FoundationTestCase {
             maven, "rules_jvm_external~1.0~maven",
             pip, "rules_python~2.0~pip",
             myext, "dep~2.0~myext",
-            myext2, "dep~2.0~myext~2");
+            myext2, "dep~2.0~myext2");
 
     assertThat(value.getFullRepoMapping(ModuleKey.ROOT))
         .isEqualTo(
@@ -323,7 +324,7 @@ public class BazelDepGraphFunctionTest extends FoundationTestCase {
                 "oneext",
                 "dep~2.0~myext~myext",
                 "twoext",
-                "dep~2.0~myext~2~myext"));
+                "dep~2.0~myext2~myext"));
   }
 
   @Test

@@ -65,6 +65,7 @@ import com.google.devtools.build.lib.skyframe.TopLevelStatusEvents.TopLevelTarge
 import com.google.devtools.build.lib.skyframe.TopLevelStatusEvents.TopLevelTargetPendingExecutionEvent;
 import com.google.devtools.build.lib.skyframe.TopLevelStatusEvents.TopLevelTargetReadyForSymlinkPlanting;
 import com.google.devtools.build.lib.skyframe.TopLevelStatusEvents.TopLevelTargetSkippedEvent;
+import com.google.devtools.build.lib.skyframe.config.BuildConfigurationKey;
 import com.google.devtools.build.lib.util.RegexFilter;
 import com.google.devtools.build.skyframe.SkyFunction;
 import com.google.devtools.build.skyframe.SkyFunction.Environment.SkyKeyComputeState;
@@ -369,8 +370,9 @@ public class BuildDriverFunction implements SkyFunction {
     if (!postedEventsTypes.add(TopLevelStatusEvents.Type.ASPECT_ANALYZED)) {
       return;
     }
-    for (AspectValue aspectValue : topLevelAspectsValue.getTopLevelAspectsValues()) {
-      AspectKey aspectKey = aspectValue.getKey();
+    for (Map.Entry<AspectKey, AspectValue> entry :
+        topLevelAspectsValue.getTopLevelAspectsMap().entrySet()) {
+      AspectKey aspectKey = entry.getKey();
       env.getListener()
           .post(
               new AspectConfiguredEvent(
@@ -378,7 +380,7 @@ public class BuildDriverFunction implements SkyFunction {
                   /* aspectClassName= */ aspectKey.getAspectClass().getName(),
                   aspectKey.getAspectDescriptor().getDescription(),
                   getConfigurationValue(env, aspectKey.getConfigurationKey())));
-      env.getListener().post(AspectAnalyzedEvent.create(aspectKey, aspectValue));
+      env.getListener().post(AspectAnalyzedEvent.create(aspectKey, entry.getValue()));
     }
   }
 
@@ -556,8 +558,10 @@ public class BuildDriverFunction implements SkyFunction {
     boolean symlinkPlantingEventsSent =
         !postedEventsTypes.add(
             TopLevelStatusEvents.Type.TOP_LEVEL_TARGET_READY_FOR_SYMLINK_PLANTING);
-    for (AspectValue aspectValue : topLevelAspectsValue.getTopLevelAspectsValues()) {
-      AspectKey aspectKey = aspectValue.getKey();
+    for (Map.Entry<AspectKey, AspectValue> entry :
+        topLevelAspectsValue.getTopLevelAspectsMap().entrySet()) {
+      AspectKey aspectKey = entry.getKey();
+      AspectValue aspectValue = entry.getValue();
       addExtraActionsIfRequested(
           aspectValue.getProvider(ExtraActionArtifactsProvider.class),
           artifactsToBuild,
@@ -611,19 +615,15 @@ public class BuildDriverFunction implements SkyFunction {
     if (localRef == null) {
       return ImmutableMap.of();
     }
-    ActionLookupValuesCollectionResult transitiveValueCollectionResult =
-        transitiveActionLookupValuesHelper.collect(actionLookupKey);
-
-    ImmutableMap<ActionAnalysisMetadata, ConflictException> conflicts =
-        localRef
-            .findArtifactConflicts(
-                transitiveValueCollectionResult.collectedValues(), strictConflictCheck)
-            .getConflicts();
-    if (conflicts.isEmpty()) {
-      transitiveActionLookupValuesHelper.registerConflictFreeKeys(
-          transitiveValueCollectionResult.visitedKeys());
+    if (transitiveActionLookupValuesHelper.trackingStateForIncrementality()) {
+      return localRef.findArtifactConflicts(actionLookupKey, strictConflictCheck).getConflicts();
     }
-    return conflicts;
+    ActionLookupValuesCollectionResult transitiveValueCollectionResult =
+        transitiveActionLookupValuesHelper.collect();
+    return localRef
+        .findArtifactConflictsNoIncrementality(
+            transitiveValueCollectionResult.collectedValues(), strictConflictCheck)
+        .getConflicts();
   }
 
   private void addExtraActionsIfRequested(
@@ -667,13 +667,13 @@ public class BuildDriverFunction implements SkyFunction {
   interface TransitiveActionLookupValuesHelper {
 
     /**
-     * Perform the traversal of the transitive closure of the {@code key} and collect the
-     * corresponding ActionLookupValues.
+     * Collect the evaluated ActionLookupValues accumulated since the last time this method was
+     * called. Only used when we're not tracking for incrementality.
      */
-    ActionLookupValuesCollectionResult collect(ActionLookupKey key) throws InterruptedException;
+    ActionLookupValuesCollectionResult collect() throws InterruptedException;
 
-    /** Register with the helper that the {@code keys} are conflict-free. */
-    void registerConflictFreeKeys(ImmutableSet<ActionLookupKey> keys);
+    /** Whether we're tracking state for incrementality in the current invocation. */
+    boolean trackingStateForIncrementality();
   }
 
   interface TestTypeResolver {

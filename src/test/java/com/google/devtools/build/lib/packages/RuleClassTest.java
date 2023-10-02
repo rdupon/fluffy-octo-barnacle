@@ -184,16 +184,16 @@ public final class RuleClassTest extends PackageLoadingTestCase {
         .isEqualTo(ruleClassA.getAttribute(7));
 
     // default based on type
-    assertThat(ruleClassA.getAttribute(0).getDefaultValue()).isEqualTo("");
-    assertThat(ruleClassA.getAttribute(1).getDefaultValue()).isEqualTo("");
-    assertThat(ruleClassA.getAttribute(2).getDefaultValue())
+    assertThat(ruleClassA.getAttribute(0).getDefaultValue(null)).isEqualTo("");
+    assertThat(ruleClassA.getAttribute(1).getDefaultValue(null)).isEqualTo("");
+    assertThat(ruleClassA.getAttribute(2).getDefaultValue(null))
         .isEqualTo(Label.parseCanonical("//default:label"));
-    assertThat(ruleClassA.getAttribute(3).getDefaultValue()).isEqualTo(ImmutableList.of());
-    assertThat(ruleClassA.getAttribute(4).getDefaultValue()).isEqualTo(StarlarkInt.of(42));
+    assertThat(ruleClassA.getAttribute(3).getDefaultValue(null)).isEqualTo(ImmutableList.of());
+    assertThat(ruleClassA.getAttribute(4).getDefaultValue(null)).isEqualTo(StarlarkInt.of(42));
     // default explicitly specified
-    assertThat(ruleClassA.getAttribute(5).getDefaultValue()).isNull();
-    assertThat(ruleClassA.getAttribute(6).getDefaultValue()).isEqualTo(ImmutableList.of());
-    assertThat(ruleClassA.getAttribute(7).getDefaultValue()).isEqualTo(ImmutableList.of());
+    assertThat(ruleClassA.getAttribute(5).getDefaultValue(null)).isNull();
+    assertThat(ruleClassA.getAttribute(6).getDefaultValue(null)).isEqualTo(ImmutableList.of());
+    assertThat(ruleClassA.getAttribute(7).getDefaultValue(null)).isEqualTo(ImmutableList.of());
   }
 
   @Test
@@ -260,7 +260,8 @@ public final class RuleClassTest extends PackageLoadingTestCase {
             Optional.empty(),
             StarlarkSemantics.DEFAULT,
             RepositoryMapping.ALWAYS_FALLBACK,
-            RepositoryMapping.ALWAYS_FALLBACK)
+            RepositoryMapping.ALWAYS_FALLBACK,
+            /* cpuBoundSemaphore= */ null)
         .setFilename(RootedPath.toRootedPath(root, testBuildfilePath));
   }
 
@@ -933,6 +934,7 @@ public final class RuleClassTest extends PackageLoadingTestCase {
         pkgBuilder,
         ruleLabel,
         new BuildLangTypedAttributeValuesMap(attributeValues),
+        true,
         reporter,
         ImmutableList.of(
             StarlarkThread.callStackEntry(StarlarkThread.TOP_LEVEL, testRuleLocation)));
@@ -1058,7 +1060,8 @@ public final class RuleClassTest extends PackageLoadingTestCase {
                 .add(RuleClass.NAME_ATTRIBUTE)
                 .add(attributes)
                 .build(),
-        /* buildSetting= */ null);
+        /* buildSetting= */ null,
+        /* subrules= */ ImmutableList.of());
   }
 
   private static RuleClass createParentRuleClass() {
@@ -1114,7 +1117,7 @@ public final class RuleClassTest extends PackageLoadingTestCase {
     ValidityPredicate checker =
         new ValidityPredicate() {
           @Override
-          public String checkValid(Rule from, String toRuleClass, Set<String> toRuleTags) {
+          public String checkValid(Rule from, String toRuleClass) {
             assertThat(from.getName()).isEqualTo("top");
             switch (toRuleClass) {
               case "dep1class":
@@ -1141,13 +1144,13 @@ public final class RuleClassTest extends PackageLoadingTestCase {
             topClass
                 .getAttributeByName("deps")
                 .getValidityPredicate()
-                .checkValid(topRule, dep1.getRuleClass(), dep1.getRuleTags()))
+                .checkValid(topRule, dep1.getRuleClass()))
         .isEqualTo("pear");
     assertThat(
             topClass
                 .getAttributeByName("deps")
                 .getValidityPredicate()
-                .checkValid(topRule, dep2.getRuleClass(), dep2.getRuleTags()))
+                .checkValid(topRule, dep2.getRuleClass()))
         .isNull();
   }
 

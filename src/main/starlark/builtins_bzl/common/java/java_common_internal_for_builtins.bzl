@@ -14,8 +14,7 @@
 
 """ Private utilities for Java compilation support in Starlark. """
 
-load(":common/java/java_semantics.bzl", "semantics")
-load(":common/paths.bzl", "paths")
+load(":common/java/java_helper.bzl", "helper")
 load(
     ":common/java/java_info.bzl",
     "JavaPluginInfo",
@@ -23,7 +22,9 @@ load(
     "java_info_for_compilation",
     "merge_plugin_info_without_outputs",
 )
-load(":common/java/java_helper.bzl", "helper")
+load(":common/java/java_semantics.bzl", "semantics")
+load(":common/java/sharded_javac.bzl", "experimental_sharded_javac", "use_sharded_javac")
+load(":common/paths.bzl", "paths")
 
 _java_common_internal = _builtins.internal.java_common_internal_do_not_use
 
@@ -143,21 +144,42 @@ def compile(
 
     plugin_info = merge_plugin_info_without_outputs(plugins + deps)
 
-    all_javac_opts = []
-    all_javac_opts.extend(_java_common_internal.default_javac_opts(java_toolchain = java_toolchain))
+    all_javac_opts = []  # [depset[str]]
+    all_javac_opts.append(_java_common_internal.default_javac_opts(
+        java_toolchain = java_toolchain,
+        as_depset = True,
+    ))
 
-    all_javac_opts.extend(ctx.fragments.java.default_javac_flags)
-    all_javac_opts.extend(semantics.compatible_javac_options(ctx, java_toolchain, _java_common_internal))
+    all_javac_opts.append(ctx.fragments.java.default_javac_flags_depset)
+    all_javac_opts.append(semantics.compatible_javac_options(
+        ctx,
+        java_toolchain,
+        _java_common_internal,
+    ))
 
-    if "com.google.devtools.build.runfiles.AutoBazelRepositoryProcessor" in plugin_info.plugins.processor_classes.to_list():
-        all_javac_opts.append("-Abazel.repository=" + ctx.label.workspace_name)
+    if ("com.google.devtools.build.runfiles.AutoBazelRepositoryProcessor" in
+        plugin_info.plugins.processor_classes.to_list()):
+        all_javac_opts.append(depset(
+            ["-Abazel.repository=" + ctx.label.workspace_name],
+            order = "preorder",
+        ))
     for package_config in java_toolchain.package_configuration():
         if package_config.matches(ctx.label):
-            all_javac_opts.extend(package_config.javac_opts())
+            all_javac_opts.append(package_config.javac_opts(as_depset = True))
 
-    all_javac_opts.extend(["--add-exports=%s=ALL-UNNAMED" % x for x in add_exports])
-    all_javac_opts.extend(["--add-opens=%s=ALL-UNNAMED" % x for x in add_opens])
-    all_javac_opts.extend([token for x in javac_opts for token in ctx.tokenize(x)])
+    all_javac_opts.append(depset(
+        ["--add-exports=%s=ALL-UNNAMED" % x for x in add_exports],
+        order = "preorder",
+    ))
+    all_javac_opts.append(depset(
+        ["--add-opens=%s=ALL-UNNAMED" % x for x in add_opens],
+        order = "preorder",
+    ))
+
+    # detokenize target's javacopts, it will be tokenized before compilation
+    all_javac_opts.append(depset([" ".join(javac_opts)], order = "preorder"))
+
+    all_javac_opts = depset(order = "preorder", transitive = all_javac_opts)
 
     # Optimization: skip this if there are no annotation processors, to avoid unnecessarily
     # disabling the direct classpath optimization if `enable_annotation_processor = False`
@@ -167,23 +189,13 @@ def compile(
         plugin_info = disable_plugin_info_annotation_processing(plugin_info)
         enable_direct_classpath = False
 
+    all_javac_opts_list = helper.tokenize_javacopts(ctx, all_javac_opts)
     uses_annotation_processing = False
-    if "-processor" in all_javac_opts or plugin_info.plugins.processor_classes:
+    if "-processor" in all_javac_opts_list or plugin_info.plugins.processor_classes:
         uses_annotation_processing = True
 
     has_sources = source_files or source_jars
     has_resources = resources or resource_jars
-
-    native_headers_jar = _derive_output_file(ctx, output, name_suffix = "-native-header")
-    manifest_proto = _derive_output_file(ctx, output, extension_suffix = "_manifest_proto")
-    deps_proto = None
-    if ctx.fragments.java.generate_java_deps() and has_sources:
-        deps_proto = _derive_output_file(ctx, output, extension = "jdeps")
-    generated_class_jar = None
-    generated_source_jar = None
-    if uses_annotation_processing:
-        generated_class_jar = _derive_output_file(ctx, output, name_suffix = "-gen")
-        generated_source_jar = _derive_output_file(ctx, output, name_suffix = "-gensrc")
 
     is_strict_mode = strict_deps != "OFF"
     classpath_mode = ctx.fragments.java.reduce_java_classpath()
@@ -198,36 +210,6 @@ def compile(
     compile_time_java_deps = depset()
     if is_strict_mode and classpath_mode != "OFF":
         compile_time_java_deps = depset(transitive = [dep._compile_time_java_dependencies for dep in deps])
-
-    _java_common_internal.create_compilation_action(
-        ctx,
-        java_toolchain,
-        output,
-        deps_proto,
-        generated_class_jar,
-        generated_source_jar,
-        manifest_proto,
-        native_headers_jar,
-        plugin_info,
-        depset(source_files),
-        source_jars,
-        resources,
-        depset(resource_jars),
-        compilation_classpath,
-        classpath_resources,
-        sourcepath,
-        direct_jars,
-        bootclasspath,
-        compile_time_java_deps,
-        all_javac_opts,
-        strict_deps,
-        ctx.label,
-        injecting_rule_kind,
-        enable_jspecify,
-        enable_direct_classpath,
-        annotation_processor_additional_inputs,
-        annotation_processor_additional_outputs,
-    )
 
     # create compile time jar action
     if not has_sources:
@@ -271,6 +253,72 @@ def compile(
         compile_jar = output
         compile_deps_proto = None
 
+    if use_sharded_javac(ctx):
+        if compile_jar == output or not compile_jar:
+            fail("sharding requested without hjar/ijar compilation")
+        generated_source_jar = None
+        generated_class_jar = None
+        deps_proto = None
+        native_headers_jar = None
+        manifest_proto = None
+        experimental_sharded_javac(
+            ctx,
+            java_toolchain,
+            output,
+            compile_jar,
+            plugin_info,
+            compilation_classpath,
+            direct_jars,
+            bootclasspath,
+            compile_time_java_deps,
+            all_javac_opts,
+            strict_deps,
+            source_files,
+            source_jars,
+            resources,
+            resource_jars,
+        )
+    else:
+        native_headers_jar = _derive_output_file(ctx, output, name_suffix = "-native-header")
+        manifest_proto = _derive_output_file(ctx, output, extension_suffix = "_manifest_proto")
+        deps_proto = None
+        if ctx.fragments.java.generate_java_deps() and has_sources:
+            deps_proto = _derive_output_file(ctx, output, extension = "jdeps")
+        generated_class_jar = None
+        generated_source_jar = None
+        if uses_annotation_processing:
+            generated_class_jar = _derive_output_file(ctx, output, name_suffix = "-gen")
+            generated_source_jar = _derive_output_file(ctx, output, name_suffix = "-gensrc")
+        _java_common_internal.create_compilation_action(
+            ctx,
+            java_toolchain,
+            output,
+            manifest_proto,
+            plugin_info,
+            compilation_classpath,
+            direct_jars,
+            bootclasspath,
+            compile_time_java_deps,
+            all_javac_opts,
+            strict_deps,
+            ctx.label,
+            deps_proto,
+            generated_class_jar,
+            generated_source_jar,
+            native_headers_jar,
+            depset(source_files),
+            source_jars,
+            resources,
+            depset(resource_jars),
+            classpath_resources,
+            sourcepath,
+            injecting_rule_kind,
+            enable_jspecify,
+            enable_direct_classpath,
+            annotation_processor_additional_inputs,
+            annotation_processor_additional_outputs,
+        )
+
     create_output_source_jar = len(source_files) > 0 or source_jars != [output_source_jar]
     if not output_source_jar:
         output_source_jar = _derive_output_file(ctx, output, name_suffix = "-src", extension = "jar")
@@ -291,7 +339,8 @@ def compile(
         direct_runtime_jars = []
 
     compilation_info = struct(
-        javac_options = all_javac_opts,
+        javac_options = all_javac_opts_list,
+        javac_options_list = all_javac_opts_list,
         # needs to be flattened because the public API is a list
         boot_classpath = (bootclasspath.bootclasspath if bootclasspath else java_toolchain.bootclasspath).to_list(),
         # we only add compile time jars from deps, and not exports
@@ -392,21 +441,16 @@ def run_ijar(
     )
     return output
 
-def target_kind(target, dereference_aliases = False):
+def target_kind(target):
     """Get the rule class string for a target
 
     Args:
         target: (Target)
-        dereference_aliases: (bool) resolve the actual target rule class if an
-            alias
 
     Returns:
         (str) The rule class string of the target
     """
-    return _java_common_internal.target_kind(
-        target,
-        dereference_aliases = dereference_aliases,
-    )
+    return _java_common_internal.target_kind(target)
 
 def get_build_info(ctx, is_stamping_enabled):
     """Get the artifacts representing the workspace status for this build

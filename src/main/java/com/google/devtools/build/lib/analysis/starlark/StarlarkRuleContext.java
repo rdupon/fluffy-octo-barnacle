@@ -48,12 +48,11 @@ import com.google.devtools.build.lib.analysis.TransitiveInfoCollection;
 import com.google.devtools.build.lib.analysis.config.BuildConfigurationValue;
 import com.google.devtools.build.lib.analysis.config.FragmentCollection;
 import com.google.devtools.build.lib.analysis.platform.ConstraintValueInfo;
+import com.google.devtools.build.lib.analysis.starlark.StarlarkActionFactory.StarlarkActionContext;
 import com.google.devtools.build.lib.analysis.stringtemplate.ExpansionException;
 import com.google.devtools.build.lib.analysis.test.InstrumentedFilesCollector;
 import com.google.devtools.build.lib.analysis.test.InstrumentedFilesInfo;
-import com.google.devtools.build.lib.cmdline.BazelModuleContext;
 import com.google.devtools.build.lib.cmdline.Label;
-import com.google.devtools.build.lib.cmdline.PackageIdentifier;
 import com.google.devtools.build.lib.collect.nestedset.Depset;
 import com.google.devtools.build.lib.collect.nestedset.Depset.TypeException;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
@@ -64,6 +63,7 @@ import com.google.devtools.build.lib.packages.Attribute;
 import com.google.devtools.build.lib.packages.Attribute.ComputedDefault;
 import com.google.devtools.build.lib.packages.BuildSetting;
 import com.google.devtools.build.lib.packages.BuildType;
+import com.google.devtools.build.lib.packages.BuiltinRestriction;
 import com.google.devtools.build.lib.packages.ImplicitOutputsFunction;
 import com.google.devtools.build.lib.packages.OutputFile;
 import com.google.devtools.build.lib.packages.Package;
@@ -73,10 +73,10 @@ import com.google.devtools.build.lib.packages.StructImpl;
 import com.google.devtools.build.lib.packages.StructProvider;
 import com.google.devtools.build.lib.packages.Type;
 import com.google.devtools.build.lib.packages.Type.LabelClass;
-import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.shell.ShellUtils;
 import com.google.devtools.build.lib.shell.ShellUtils.TokenizationException;
 import com.google.devtools.build.lib.starlarkbuildapi.StarlarkRuleContextApi;
+import com.google.devtools.build.lib.starlarkbuildapi.StarlarkSubruleApi;
 import com.google.devtools.build.lib.starlarkbuildapi.platform.ToolchainContextApi;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import java.util.ArrayList;
@@ -92,7 +92,6 @@ import javax.annotation.Nullable;
 import net.starlark.java.eval.Dict;
 import net.starlark.java.eval.Dict.ImmutableKeyTrackingDict;
 import net.starlark.java.eval.EvalException;
-import net.starlark.java.eval.Module;
 import net.starlark.java.eval.Printer;
 import net.starlark.java.eval.Sequence;
 import net.starlark.java.eval.Starlark;
@@ -112,16 +111,16 @@ import net.starlark.java.eval.Tuple;
  * object and makes it impossible to accidentally use this object where it's not supposed to be used
  * (such attempts will result in {@link EvalException}s).
  */
-public final class StarlarkRuleContext implements StarlarkRuleContextApi<ConstraintValueInfo> {
+public final class StarlarkRuleContext
+    implements StarlarkRuleContextApi<ConstraintValueInfo>, StarlarkActionContext {
 
-  private static final ImmutableSet<PackageIdentifier> PRIVATE_STARLARKIFICATION_ALLOWLIST =
+  static final ImmutableSet<BuiltinRestriction.AllowlistEntry> PRIVATE_STARLARKIFICATION_ALLOWLIST =
       ImmutableSet.of(
-          PackageIdentifier.createUnchecked("_builtins", ""),
-          PackageIdentifier.createInMainRepo("test"), // for tests
-          PackageIdentifier.createInMainRepo("third_party/bazel_rules/rules_android"),
-          PackageIdentifier.createUnchecked("build_bazel_rules_android", ""),
-          PackageIdentifier.createUnchecked("rules_android", ""),
-          PackageIdentifier.createInMainRepo("tools/build_defs/android"));
+          BuiltinRestriction.allowlistEntry("", "test"), // for tests
+          BuiltinRestriction.allowlistEntry("", "third_party/bazel_rules/rules_android"),
+          BuiltinRestriction.allowlistEntry("build_bazel_rules_android", ""),
+          BuiltinRestriction.allowlistEntry("rules_android", ""),
+          BuiltinRestriction.allowlistEntry("", "tools/build_defs/android"));
 
   private static final String EXECUTABLE_OUTPUT_NAME = "executable";
 
@@ -176,6 +175,9 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
    * unique script name to avoid action conflicts.
    */
   private int resolveCommandScriptCounter = 0;
+
+  // for temporarily freezing mutability, such as while evaluating a subrule
+  private boolean lockedForSubruleEvaluation = false;
 
   /**
    * Creates a new StarlarkRuleContext wrapping ruleContext.
@@ -268,7 +270,7 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
       StarlarkAttributesCollection.Builder aspectBuilder =
           StarlarkAttributesCollection.builder(this);
       for (Attribute attribute : attributes) {
-        Object defaultValue = attribute.getDefaultValue();
+        Object defaultValue = attribute.getDefaultValue(null);
         if (defaultValue instanceof ComputedDefault) {
           defaultValue = ((ComputedDefault) defaultValue).getDefault(ruleContext.attributes());
         }
@@ -289,7 +291,7 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
           continue;
         }
         for (Attribute attribute : aspect.getDefinition().getAttributes().values()) {
-          Object defaultValue = attribute.getDefaultValue();
+          Object defaultValue = attribute.getDefaultValue(null);
           if (defaultValue instanceof ComputedDefault) {
             defaultValue = ((ComputedDefault) defaultValue).getDefault(ruleContext.attributes());
           }
@@ -299,6 +301,19 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
 
       this.ruleAttributesCollection = ruleBuilder.build();
     }
+  }
+
+  /** Returns the subrules declared by the rule or aspect represented by this context. */
+  ImmutableSet<? extends StarlarkSubruleApi> getSubrules() {
+    if (isForAspect()) {
+      return getRuleContext().getMainAspect().getDefinition().getSubrules();
+    } else {
+      return getRuleContext().getRule().getRuleClassObject().getSubrules();
+    }
+  }
+
+  void setLockedForSubrule(boolean isLocked) {
+    this.lockedForSubruleEvaluation = isLocked;
   }
 
   /**
@@ -431,7 +446,16 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
     outputsObject = null;
   }
 
+  /** Returns the {@link ArtifactRoot} for newly declared artifacts for use in actions. */
+  @Override
+  public ArtifactRoot newFileRoot() {
+    return isForAspect()
+        ? getRuleContext().getBinDirectory()
+        : getRuleContext().getBinOrGenfilesDirectory();
+  }
+
   /** Throws an EvalException mentioning {@code attrName} if we've already been nullified. */
+  @Override
   public void checkMutable(String attrName) throws EvalException {
     if (isImmutable()) {
       throw Starlark.errorf(
@@ -505,7 +529,7 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
 
   @Override
   public boolean isImmutable() {
-    return ruleContext == null;
+    return ruleContext == null || lockedForSubruleEvaluation;
   }
 
   @Override
@@ -518,6 +542,7 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
   }
 
   /** Returns the wrapped ruleContext. */
+  @Override
   public RuleContext getRuleContext() {
     return ruleContext;
   }
@@ -795,59 +820,6 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
   }
 
   @Override
-  public Artifact newFile(Object var1, Object var2, Object fileSuffix) throws EvalException {
-    checkMutable("new_file");
-    checkDeprecated("ctx.actions.declare_file", "ctx.new_file", getStarlarkSemantics());
-
-    // Determine which of new_file's four signatures is being used. Yes, this is terrible.
-    // It's one major reason that this method is deprecated.
-    if (fileSuffix != Starlark.UNBOUND) {
-      // new_file(file_root, sibling_file, suffix)
-      ArtifactRoot root =
-          assertTypeForNewFile(
-              var1, ArtifactRoot.class, "expected first param to be of type 'root'");
-      Artifact siblingFile =
-          assertTypeForNewFile(var2, Artifact.class, "expected second param to be of type 'File'");
-      PathFragment original =
-          siblingFile.getOutputDirRelativePath(getConfiguration().isSiblingRepositoryLayout());
-      PathFragment fragment = original.replaceName(original.getBaseName() + fileSuffix);
-      return ruleContext.getDerivedArtifact(fragment, root);
-
-    } else if (var2 == Starlark.UNBOUND) {
-      // new_file(filename)
-      String filename =
-          assertTypeForNewFile(var1, String.class, "expected first param to be of type 'string'");
-      return actionFactory.declareFile(filename, Starlark.NONE);
-
-    } else {
-      String filename =
-          assertTypeForNewFile(var2, String.class, "expected second param to be of type 'string'");
-      if (var1 instanceof ArtifactRoot) {
-        // new_file(root, filename)
-        ArtifactRoot root = (ArtifactRoot) var1;
-
-        return ruleContext.getPackageRelativeArtifact(filename, root);
-      } else {
-        // new_file(sibling_file, filename)
-        Artifact siblingFile =
-            assertTypeForNewFile(
-                var1, Artifact.class, "expected first param to be of type 'File' or 'root'");
-
-        return actionFactory.declareFile(filename, siblingFile);
-      }
-    }
-  }
-
-  private static <T> T assertTypeForNewFile(Object obj, Class<T> type, String errorMessage)
-      throws EvalException {
-    if (type.isInstance(obj)) {
-      return type.cast(obj);
-    } else {
-      throw new EvalException(errorMessage);
-    }
-  }
-
-  @Override
   public boolean checkPlaceholders(String template, Sequence<?> allowedPlaceholders) // <String>
       throws EvalException {
     checkMutable("check_placeholders");
@@ -896,11 +868,18 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
     return ruleContext.getExpander(makeVariableContext).expand(attributeName, command);
   }
 
-  FilesToRunProvider getExecutableRunfiles(Artifact executable) {
+  /** Returns the {@link FilesToRunProvider} corresponding to the supplied {@code executable} */
+  @Override
+  public FilesToRunProvider getExecutableRunfiles(Artifact executable, String what) {
     return attributesCollection.getExecutableRunfilesMap().get(executable);
   }
 
-  boolean areRunfilesFromDeps(FilesToRunProvider executable) {
+  /**
+   * Returns true iff the supplied {@link FilesToRunProvider} is from an executable attribute of
+   * this rule.
+   */
+  @Override
+  public boolean areRunfilesFromDeps(FilesToRunProvider executable) {
     return attributesCollection.getExecutableRunfilesMap().containsValue(executable);
   }
 
@@ -944,22 +923,8 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
     }
   }
 
-  static void checkPrivateAccess(ImmutableSet<PackageIdentifier> allowlist, StarlarkThread thread)
-      throws EvalException {
-    Label label =
-        ((BazelModuleContext) Module.ofInnermostEnclosingStarlarkFunction(thread).getClientData())
-            .label();
-    if (allowlist.stream()
-        .noneMatch(
-            allowedPrefix ->
-                label.getRepository().equals(allowedPrefix.getRepository())
-                    && label.getPackageFragment().startsWith(allowedPrefix.getPackageFragment()))) {
-      throw Starlark.errorf("Rule in '%s' cannot use private API", label.getPackageName());
-    }
-  }
-
-  static void checkPrivateAccess(StarlarkThread thread) throws EvalException {
-    checkPrivateAccess(PRIVATE_STARLARKIFICATION_ALLOWLIST, thread);
+  private static void checkPrivateAccess(StarlarkThread thread) throws EvalException {
+    BuiltinRestriction.failIfCalledOutsideAllowlist(thread, PRIVATE_STARLARKIFICATION_ALLOWLIST);
   }
 
   @Override
@@ -1112,6 +1077,7 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
         Depset.of(Artifact.class, helper.getResolvedTools()), helper.getToolsRunfilesSuppliers());
   }
 
+  @Override
   public StarlarkSemantics getStarlarkSemantics() {
     return ruleContext.getAnalysisEnvironment().getStarlarkSemantics();
   }
@@ -1149,16 +1115,6 @@ public final class StarlarkRuleContext implements StarlarkRuleContextApi<Constra
       convertedMap.put((Label) key, files.build());
     }
     return convertedMap;
-  }
-
-  private static void checkDeprecated(String newApi, String oldApi, StarlarkSemantics semantics)
-      throws EvalException {
-    if (semantics.getBool(BuildLanguageOptions.INCOMPATIBLE_NEW_ACTIONS_API)) {
-      throw Starlark.errorf(
-          "Use %s instead of %s.\n"
-              + "Use --incompatible_new_actions_api=false to temporarily disable this check.",
-          newApi, oldApi);
-    }
   }
 
   /**

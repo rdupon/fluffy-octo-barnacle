@@ -50,18 +50,22 @@ public final class ReverseDepsUtilityTest {
   @Test
   public void testAddAndRemove() {
     for (int numRemovals = 0; numRemovals <= numElements; numRemovals++) {
-      InMemoryNodeEntry example = new InMemoryNodeEntry(KEY);
+      var example = new IncrementalInMemoryNodeEntry(KEY);
       for (int j = 0; j < numElements; j++) {
         ReverseDepsUtility.addReverseDep(example, Key.create(j));
       }
       // Not a big test but at least check that it does not blow up.
       assertThat(ReverseDepsUtility.toString(example)).isNotEmpty();
-      assertThat(ReverseDepsUtility.getReverseDeps(example, /*checkConsistency=*/ true))
+      assertThat(
+              ReverseDepsUtility.consolidateAndGetReverseDeps(
+                  example, /* checkConsistency= */ true))
           .hasSize(numElements);
       for (int i = 0; i < numRemovals; i++) {
         ReverseDepsUtility.removeReverseDep(example, Key.create(i));
       }
-      assertThat(ReverseDepsUtility.getReverseDeps(example, /*checkConsistency=*/ true))
+      assertThat(
+              ReverseDepsUtility.consolidateAndGetReverseDeps(
+                  example, /* checkConsistency= */ true))
           .hasSize(numElements - numRemovals);
       assertThat(example.getReverseDepsDataToConsolidateForReverseDepsUtil()).isNull();
     }
@@ -71,16 +75,20 @@ public final class ReverseDepsUtilityTest {
   @Test
   public void testAddAllAndRemove() {
     for (int numRemovals = 0; numRemovals <= numElements; numRemovals++) {
-      InMemoryNodeEntry example = new InMemoryNodeEntry(KEY);
+      var example = new IncrementalInMemoryNodeEntry(KEY);
       for (int j = 0; j < numElements; j++) {
         ReverseDepsUtility.addReverseDep(example, Key.create(j));
       }
-      assertThat(ReverseDepsUtility.getReverseDeps(example, /*checkConsistency=*/ true))
+      assertThat(
+              ReverseDepsUtility.consolidateAndGetReverseDeps(
+                  example, /* checkConsistency= */ true))
           .hasSize(numElements);
       for (int i = 0; i < numRemovals; i++) {
         ReverseDepsUtility.removeReverseDep(example, Key.create(i));
       }
-      assertThat(ReverseDepsUtility.getReverseDeps(example, /*checkConsistency=*/ true))
+      assertThat(
+              ReverseDepsUtility.consolidateAndGetReverseDeps(
+                  example, /* checkConsistency= */ true))
           .hasSize(numElements - numRemovals);
       assertThat(example.getReverseDepsDataToConsolidateForReverseDepsUtil()).isNull();
     }
@@ -88,7 +96,7 @@ public final class ReverseDepsUtilityTest {
 
   @Test
   public void testDuplicateCheckOnGetReverseDeps() {
-    InMemoryNodeEntry example = new InMemoryNodeEntry(KEY);
+    var example = new IncrementalInMemoryNodeEntry(KEY);
     for (int i = 0; i < numElements; i++) {
       ReverseDepsUtility.addReverseDep(example, Key.create(i));
     }
@@ -96,28 +104,34 @@ public final class ReverseDepsUtilityTest {
     ReverseDepsUtility.addReverseDep(example, Key.create(0));
     if (numElements == 0) {
       // Will not throw.
-      assertThat(ReverseDepsUtility.getReverseDeps(example, /*checkConsistency=*/ true)).hasSize(1);
+      assertThat(
+              ReverseDepsUtility.consolidateAndGetReverseDeps(
+                  example, /* checkConsistency= */ true))
+          .hasSize(1);
     } else {
       assertThrows(
           RuntimeException.class,
-          () -> ReverseDepsUtility.getReverseDeps(example, /*checkConsistency=*/ true));
+          () ->
+              ReverseDepsUtility.consolidateAndGetReverseDeps(
+                  example, /* checkConsistency= */ true));
     }
   }
 
   @Test
   public void duplicateAddNoThrowWithoutCheck() {
-    InMemoryNodeEntry example = new InMemoryNodeEntry(KEY);
+    var example = new IncrementalInMemoryNodeEntry(KEY);
     for (int i = 0; i < numElements; i++) {
       ReverseDepsUtility.addReverseDep(example, Key.create(i));
     }
     ReverseDepsUtility.addReverseDep(example, Key.create(0));
-    assertThat(ReverseDepsUtility.getReverseDeps(example, /*checkConsistency=*/ false))
+    assertThat(
+            ReverseDepsUtility.consolidateAndGetReverseDeps(example, /* checkConsistency= */ false))
         .hasSize(numElements + 1);
   }
 
   @Test
   public void doubleAddThenRemove() {
-    InMemoryNodeEntry example = new InMemoryNodeEntry(KEY);
+    var example = new IncrementalInMemoryNodeEntry(KEY);
     SkyKey key = Key.create(0);
     ReverseDepsUtility.addReverseDep(example, key);
     // Should only fail when we call getReverseDeps().
@@ -125,12 +139,13 @@ public final class ReverseDepsUtilityTest {
     ReverseDepsUtility.removeReverseDep(example, key);
     assertThrows(
         IllegalStateException.class,
-        () -> ReverseDepsUtility.getReverseDeps(example, /*checkConsistency=*/ true));
+        () ->
+            ReverseDepsUtility.consolidateAndGetReverseDeps(example, /* checkConsistency= */ true));
   }
 
   @Test
   public void doubleAddThenRemoveCheckedOnSize() {
-    InMemoryNodeEntry example = new InMemoryNodeEntry(KEY);
+    var example = new IncrementalInMemoryNodeEntry(KEY);
     SkyKey fixedKey = Key.create(0);
     ReverseDepsUtility.addReverseDep(example, fixedKey);
     SkyKey key = Key.create(1);
@@ -150,14 +165,15 @@ public final class ReverseDepsUtilityTest {
 
   @Test
   public void addRemoveAdd() {
-    InMemoryNodeEntry example = new InMemoryNodeEntry(KEY);
+    var example = new IncrementalInMemoryNodeEntry(KEY);
     SkyKey fixedKey = Key.create(0);
     ReverseDepsUtility.addReverseDep(example, fixedKey);
     SkyKey key = Key.create(1);
     ReverseDepsUtility.addReverseDep(example, key);
     ReverseDepsUtility.removeReverseDep(example, key);
     ReverseDepsUtility.addReverseDep(example, key);
-    assertThat(ReverseDepsUtility.getReverseDeps(example, /*checkConsistency=*/ true))
+    assertThat(
+            ReverseDepsUtility.consolidateAndGetReverseDeps(example, /* checkConsistency= */ true))
         .containsExactly(fixedKey, key);
   }
 

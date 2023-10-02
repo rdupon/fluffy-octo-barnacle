@@ -45,6 +45,7 @@ import com.google.devtools.build.lib.util.FileType;
 import com.google.devtools.build.lib.util.FileTypeSet;
 import com.google.devtools.build.lib.util.StringUtil;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -188,16 +189,13 @@ public final class Attribute implements Comparable<Attribute> {
     /**
      * This method should return null if the edge is valid, or a suitable error message if it is
      * not. Note that warnings are not supported.
-     *
-     * @param toRuleTags the tags of the rule, used as a workaround in {@code J2ObjcLibraryBaseRule}
-     *     and should probably be deleted.
      */
     @Nullable
-    String checkValid(Rule from, String toRuleClass, Set<String> toRuleTags);
+    String checkValid(Rule from, String toRuleClass);
   }
 
   @SerializationConstant
-  public static final ValidityPredicate ANY_EDGE = (from, toRuleClass, toRuleTags) -> null;
+  public static final ValidityPredicate ANY_EDGE = (from, toRuleClass) -> null;
 
   /** A predicate class to check if the value of the attribute comes from a predefined set. */
   public static class AllowedValueSet implements PredicateWithMessage<Object> {
@@ -263,6 +261,7 @@ public final class Attribute implements Comparable<Attribute> {
     private final PredicateWithMessage<Object> allowedValues;
     private final RequiredProviders requiredProviders;
     private final ImmutableList<AspectDetails<?>> aspects;
+    private final int hashCode;
 
     private ImmutableAttributeFactory(
         Type<?> type,
@@ -293,6 +292,22 @@ public final class Attribute implements Comparable<Attribute> {
       this.allowedValues = allowedValues;
       this.requiredProviders = requiredProviders;
       this.aspects = aspects;
+      this.hashCode =
+          Objects.hash(
+              type,
+              doc,
+              transitionFactory,
+              allowedRuleClassesForLabels,
+              allowedRuleClassesForLabelsWarning,
+              allowedFileTypesForLabels,
+              validityPredicate,
+              value,
+              valueSource,
+              valueSet,
+              propertyFlags,
+              allowedValues,
+              requiredProviders,
+              aspects);
     }
 
     public AttributeValueSource getValueSource() {
@@ -301,6 +316,10 @@ public final class Attribute implements Comparable<Attribute> {
 
     public boolean isValueSet() {
       return valueSet;
+    }
+
+    public Type<?> getType() {
+      return type;
     }
 
     public Attribute build(String name) {
@@ -341,6 +360,39 @@ public final class Attribute implements Comparable<Attribute> {
           allowedValues,
           requiredProviders,
           aspects);
+    }
+
+    // Value equality semantics - same as for Attribute.
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof ImmutableAttributeFactory)) {
+        return false;
+      }
+      ImmutableAttributeFactory that = (ImmutableAttributeFactory) o;
+      return hashCode == that.hashCode
+          && Objects.equals(type, that.type)
+          && Objects.equals(doc, that.doc)
+          && Objects.equals(transitionFactory, that.transitionFactory)
+          && Objects.equals(allowedRuleClassesForLabels, that.allowedRuleClassesForLabels)
+          && Objects.equals(
+              allowedRuleClassesForLabelsWarning, that.allowedRuleClassesForLabelsWarning)
+          && Objects.equals(allowedFileTypesForLabels, that.allowedFileTypesForLabels)
+          && Objects.equals(validityPredicate, that.validityPredicate)
+          && Objects.equals(value, that.value)
+          && Objects.equals(valueSource, that.valueSource)
+          && valueSet == that.valueSet
+          && Objects.equals(propertyFlags, that.propertyFlags)
+          && Objects.equals(allowedValues, that.allowedValues)
+          && Objects.equals(requiredProviders, that.requiredProviders)
+          && Objects.equals(aspects, that.aspects);
+    }
+
+    @Override
+    public int hashCode() {
+      return hashCode;
     }
   }
 
@@ -1046,11 +1098,11 @@ public final class Attribute implements Comparable<Attribute> {
    * A strategy for dealing with too many computations, used when creating lookup tables for {@link
    * ComputedDefault}s.
    *
-   * @param <TException> The type of exception this strategy throws if too many computations are
+   * @param <ExceptionT> The type of exception this strategy throws if too many computations are
    *     attempted.
    */
-  interface ComputationLimiter<TException extends Exception> {
-    void onComputationCount(int count) throws TException;
+  interface ComputationLimiter<ExceptionT extends Exception> {
+    void onComputationCount(int count) throws ExceptionT;
   }
 
   /**
@@ -1058,7 +1110,6 @@ public final class Attribute implements Comparable<Attribute> {
    * natively-defined {@link ComputedDefault}s, which are limited in the number of configurable
    * attributes they depend on, not on the number of different combinations of possible inputs.
    */
-  private static final ComputationLimiter<RuntimeException> NULL_COMPUTATION_LIMITER = count -> {};
 
   /** Exception for computed default attributes that depend on too many configurable attributes. */
   private static class TooManyConfigurableAttributesException extends Exception {
@@ -1248,9 +1299,7 @@ public final class Attribute implements Comparable<Attribute> {
       // Note that this uses ArrayList instead of something like ImmutableList because some
       // values may be null.
       return new ArrayList<>(
-          strategy
-              .computeValuesForAllCombinations(dependencies, type, rule, NULL_COMPUTATION_LIMITER)
-              .values());
+          strategy.computeValuesForAllCombinations(dependencies, type, rule, count -> {}).values());
     }
 
     /** The list of configurable attributes this ComputedDefault declares it may read. */
@@ -1479,8 +1528,10 @@ public final class Attribute implements Comparable<Attribute> {
     private final Resolver<FragmentT, ValueT> resolver;
 
     private SimpleLateBoundDefault(
-        Class<FragmentT> fragmentClass, ValueT defaultValue, Resolver<FragmentT, ValueT> resolver) {
-      super(fragmentClass, defaultValue);
+        Class<FragmentT> fragmentClass,
+        Function<Rule, ValueT> defaultValueEvaluator,
+        Resolver<FragmentT, ValueT> resolver) {
+      super(fragmentClass, defaultValueEvaluator);
 
       this.resolver = resolver;
     }
@@ -1519,7 +1570,7 @@ public final class Attribute implements Comparable<Attribute> {
       ValueT resolve(Rule rule, AttributeMap attributeMap, FragmentT input);
     }
 
-    private final ValueT defaultValue;
+    private final Function<Rule, ValueT> defaultValueEvaluator;
     private final Class<FragmentT> fragmentClass;
 
     /**
@@ -1532,7 +1583,7 @@ public final class Attribute implements Comparable<Attribute> {
     public static LabelLateBoundDefault<Void> fromConstantForTesting(Label defaultValue) {
       return new LabelLateBoundDefault<>(
           Void.class,
-          Preconditions.checkNotNull(defaultValue),
+          (rule) -> Preconditions.checkNotNull(defaultValue),
           (rule, attributes, unused) -> defaultValue) {};
     }
 
@@ -1547,8 +1598,8 @@ public final class Attribute implements Comparable<Attribute> {
       return (LateBoundDefault<Void, ValueT>) AlwaysNullLateBoundDefault.INSTANCE;
     }
 
-    LateBoundDefault(Class<FragmentT> fragmentClass, ValueT defaultValue) {
-      this.defaultValue = defaultValue;
+    LateBoundDefault(Class<FragmentT> fragmentClass, Function<Rule, ValueT> defaultValueEvaluator) {
+      this.defaultValueEvaluator = defaultValueEvaluator;
       this.fragmentClass = fragmentClass;
     }
 
@@ -1568,8 +1619,8 @@ public final class Attribute implements Comparable<Attribute> {
     }
 
     /** The default value for the attribute that is set during the loading phase. */
-    public final ValueT getDefault() {
-      return defaultValue;
+    public ValueT getDefault(@Nullable Rule rule) {
+      return defaultValueEvaluator.apply(rule);
     }
 
     /**
@@ -1592,7 +1643,7 @@ public final class Attribute implements Comparable<Attribute> {
   public abstract static class AbstractLabelLateBoundDefault<FragmentT>
       extends LateBoundDefault<FragmentT, Label> {
     protected AbstractLabelLateBoundDefault(Class<FragmentT> fragmentClass, Label defaultValue) {
-      super(fragmentClass, defaultValue);
+      super(fragmentClass, (Function<Rule, Label> & Serializable) (rule) -> defaultValue);
     }
   }
 
@@ -1602,7 +1653,7 @@ public final class Attribute implements Comparable<Attribute> {
     static final AlwaysNullLateBoundDefault INSTANCE = new AlwaysNullLateBoundDefault();
 
     private AlwaysNullLateBoundDefault() {
-      super(Void.class, null, (rule, attributes, unused) -> null);
+      super(Void.class, (rule) -> null, (rule, attributes, unused) -> null);
     }
   }
 
@@ -1611,8 +1662,10 @@ public final class Attribute implements Comparable<Attribute> {
       extends SimpleLateBoundDefault<FragmentT, Label> {
     @VisibleForTesting
     protected LabelLateBoundDefault(
-        Class<FragmentT> fragmentClass, Label defaultValue, Resolver<FragmentT, Label> resolver) {
-      super(fragmentClass, defaultValue, resolver);
+        Class<FragmentT> fragmentClass,
+        Function<Rule, Label> defaultValueEvaluator,
+        Resolver<FragmentT, Label> resolver) {
+      super(fragmentClass, defaultValueEvaluator, resolver);
     }
 
     /**
@@ -1646,12 +1699,30 @@ public final class Attribute implements Comparable<Attribute> {
      */
     public static <FragmentT> LabelLateBoundDefault<FragmentT> fromTargetConfiguration(
         Class<FragmentT> fragmentClass, Label defaultValue, Resolver<FragmentT, Label> resolver) {
+      return fromTargetConfigurationWithRuleBasedDefault(
+          fragmentClass, (Function<Rule, Label> & Serializable) (rule) -> defaultValue, resolver);
+    }
+
+    /**
+     * Variant of {@link #fromTargetConfiguration} that can read the rule instance to determine the
+     * default value (e.g. by reading an attribute).
+     *
+     * <p>Has a different name than {@link #fromTargetConfiguration} because many callers to {@link
+     * #fromTargetConfiguration} pass a null value to the {@code defaultValue} parameter, which
+     * makes a proper method overload ambiguous.
+     */
+    public static <FragmentT>
+        LabelLateBoundDefault<FragmentT> fromTargetConfigurationWithRuleBasedDefault(
+            Class<FragmentT> fragmentClass,
+            Function<Rule, Label> defaultValueEvaluator,
+            Resolver<FragmentT, Label> resolver) {
       Preconditions.checkArgument(
           !fragmentClass.equals(Void.class),
           "Use fromRuleAndAttributesOnly to specify a LateBoundDefault which does not use "
               + "configuration.");
-      return new LabelLateBoundDefault<>(fragmentClass, defaultValue, resolver);
+      return new LabelLateBoundDefault<>(fragmentClass, defaultValueEvaluator, resolver);
     }
+
   }
 
   /** A {@link LateBoundDefault} for a {@link List} of {@link Label} objects. */
@@ -1659,7 +1730,10 @@ public final class Attribute implements Comparable<Attribute> {
       extends SimpleLateBoundDefault<FragmentT, List<Label>> {
     private LabelListLateBoundDefault(
         Class<FragmentT> fragmentClass, Resolver<FragmentT, List<Label>> resolver) {
-      super(fragmentClass, ImmutableList.of(), resolver);
+      super(
+          fragmentClass,
+          (Function<Rule, List<Label>> & Serializable) (rule) -> ImmutableList.of(),
+          resolver);
     }
 
     public static <FragmentT> LabelListLateBoundDefault<FragmentT> fromTargetConfiguration(
@@ -2070,11 +2144,17 @@ public final class Attribute implements Comparable<Attribute> {
    *
    * <p>During population of the rule's attribute dictionary, all non-computed defaults must be set
    * before all computed ones.
+   *
+   * @param rule the rule this attribute is attached to, if one exists. Otherwise null. Aspect
+   *     attributes, for example, aren't associated with rules. The {@link LabelLateBoundDefault}'s
+   *     author is responsible for ensuring null inputs work properly: either {@link
+   *     LateBoundDefault#getDefaultValue(Rule)} works on null inputs or the attribute is known to
+   *     always be attached to rules.
    */
   @Nullable
-  public Object getDefaultValue() {
+  public Object getDefaultValue(@Nullable Rule rule) {
     if (defaultValue instanceof LateBoundDefault) {
-      return ((LateBoundDefault<?, ?>) defaultValue).getDefault();
+      return ((LateBoundDefault<?, ?>) defaultValue).getDefault(rule);
     } else {
       return defaultValue;
     }
@@ -2101,6 +2181,10 @@ public final class Attribute implements Comparable<Attribute> {
   boolean hasComputedDefault() {
     return defaultValue instanceof ComputedDefault
         || defaultValue instanceof StarlarkComputedDefaultTemplate;
+  }
+
+  public boolean isPublic() {
+    return !isPrivateAttribute(name);
   }
 
   /**
@@ -2194,9 +2278,9 @@ public final class Attribute implements Comparable<Attribute> {
   }
 
   /** Returns a replica builder of this Attribute. */
-  public <TYPE> Attribute.Builder<TYPE> cloneBuilder(Type<TYPE> tp) {
+  public <TypeT> Attribute.Builder<TypeT> cloneBuilder(Type<TypeT> tp) {
     Preconditions.checkArgument(tp == this.type);
-    Builder<TYPE> builder = new Builder<>(name, tp);
+    Builder<TypeT> builder = new Builder<>(name, tp);
     builder.doc = doc;
     builder.allowedFileTypesForLabels = allowedFileTypesForLabels;
     builder.allowedRuleClassesForLabels = allowedRuleClassesForLabels;

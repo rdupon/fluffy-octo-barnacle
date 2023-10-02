@@ -31,6 +31,9 @@ import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.packages.DotBazelFileSyntaxChecker;
 import com.google.devtools.build.lib.packages.StarlarkExportable;
+import com.google.devtools.build.lib.profiler.Profiler;
+import com.google.devtools.build.lib.profiler.ProfilerTask;
+import com.google.devtools.build.lib.profiler.SilentCloseable;
 import com.google.devtools.build.lib.rules.repository.RepositoryDirectoryValue;
 import com.google.devtools.build.lib.server.FailureDetails.ExternalDeps.Code;
 import com.google.devtools.build.lib.skyframe.ClientEnvironmentFunction;
@@ -131,8 +134,12 @@ public class ModuleFileFunction implements SkyFunction {
 
     ModuleFileValue.Key moduleFileKey = (ModuleFileValue.Key) skyKey;
     ModuleKey moduleKey = moduleFileKey.getModuleKey();
-    GetModuleFileResult getModuleFileResult =
-        getModuleFile(moduleKey, moduleFileKey.getOverride(), allowedYankedVersions, env);
+    GetModuleFileResult getModuleFileResult;
+    try (SilentCloseable c =
+        Profiler.instance().profile(ProfilerTask.BZLMOD, () -> "fetch module file: " + moduleKey)) {
+      getModuleFileResult =
+          getModuleFile(moduleKey, moduleFileKey.getOverride(), allowedYankedVersions, env);
+    }
     if (getModuleFileResult == null) {
       return null;
     }
@@ -277,7 +284,10 @@ public class ModuleFileFunction implements SkyFunction {
 
     ModuleFileGlobals moduleFileGlobals =
         new ModuleFileGlobals(builtinModules, moduleKey, registry, ignoreDevDeps);
-    try (Mutability mu = Mutability.create("module file", moduleKey)) {
+    try (SilentCloseable c =
+            Profiler.instance()
+                .profile(ProfilerTask.BZLMOD, () -> "evaluate module file: " + moduleKey);
+        Mutability mu = Mutability.create("module file", moduleKey)) {
       new DotBazelFileSyntaxChecker("MODULE.bazel files", /* canLoadBzl= */ false)
           .check(starlarkFile);
       net.starlark.java.eval.Module predeclaredEnv =
@@ -353,6 +363,15 @@ public class ModuleFileFunction implements SkyFunction {
     }
 
     // Otherwise, we should get the module file from a registry.
+    if (key.getVersion().isEmpty()) {
+      // Print a friendlier error message if the user forgets to specify a version *and* doesn't
+      // have a non-registry override.
+      throw errorf(
+          Code.MODULE_NOT_FOUND,
+          "bad bazel_dep on module '%s' with no version. Did you forget to specify a version, or a"
+              + " non-registry override?",
+          key.getName());
+    }
     // TODO(wyv): Move registry object creation to BazelRepositoryModule so we don't repeatedly
     //   create them, and we can better report the error (is it a flag error or override error?).
     List<String> registries = Objects.requireNonNull(REGISTRIES.get(env));
@@ -363,6 +382,7 @@ public class ModuleFileFunction implements SkyFunction {
       }
     } else if (override != null) {
       // This should never happen.
+      // TODO(wyv): make ModuleOverride a sealed interface so this is checked at compile time.
       throw new IllegalStateException(
           String.format(
               "unrecognized override type %s for module %s",
@@ -371,9 +391,7 @@ public class ModuleFileFunction implements SkyFunction {
     List<Registry> registryObjects = new ArrayList<>(registries.size());
     for (String registryUrl : registries) {
       try {
-        registryObjects.add(
-            registryFactory.getRegistryWithUrl(
-                registryUrl.replace("%workspace%", workspaceRoot.getPathString())));
+        registryObjects.add(registryFactory.getRegistryWithUrl(registryUrl));
       } catch (URISyntaxException e) {
         throw errorf(Code.INVALID_REGISTRY_URL, e, "Invalid registry URL");
       }

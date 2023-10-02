@@ -73,11 +73,6 @@ def _build_linking_context_from_libraries(ctx, libraries):
 
     return linking_context
 
-def _grep_includes_executable(grep_includes):
-    if grep_includes == None:
-        return None
-    return grep_includes.files_to_run.executable
-
 def _check_file_extension(file, allowed_extensions, allow_versioned_shared_libraries):
     extension = "." + file.extension
     if _matches_extension(extension, allowed_extensions) or (allow_versioned_shared_libraries and _is_versioned_shared_library_extension_valid(file.path)):
@@ -1039,8 +1034,7 @@ def _report_invalid_options(cc_toolchain, cpp_config):
 def _is_repository_main(repository):
     return repository == ""
 
-def _repository_exec_path(ctx, sibling_repository_layout):
-    repository = ctx.label.workspace_name
+def _repository_exec_path(repository, sibling_repository_layout):
     if _is_repository_main(repository):
         return ""
     prefix = "external"
@@ -1051,31 +1045,27 @@ def _repository_exec_path(ctx, sibling_repository_layout):
     return paths.get_relative(prefix, repository)
 
 def _package_exec_path(ctx, package, sibling_repository_layout):
-    return paths.get_relative(_repository_exec_path(ctx, sibling_repository_layout), package)
+    return paths.get_relative(_repository_exec_path(ctx.label.workspace_name, sibling_repository_layout), package)
 
-def _package_source_root(ctx, package, sibling_repository_layout):
-    repository = ctx.label.workspace_name
+def _package_source_root(repository, package, sibling_repository_layout):
     if _is_repository_main(repository) or sibling_repository_layout:
         return package
     if repository.startswith("@"):
         repository = repository[1:]
     return paths.get_relative(paths.get_relative("external", repository), package)
 
-def _contains_up_level_references(path):
-    return path.startswith("..") and (len(path) == 2 or path[2] == "/")
-
 def _system_include_dirs(ctx, additional_make_variable_substitutions):
     result = []
     sibling_repository_layout = ctx.configuration.is_sibling_repository_layout()
     package = ctx.label.package
     package_exec_path = _package_exec_path(ctx, package, sibling_repository_layout)
-    package_source_root = _package_source_root(ctx, package, sibling_repository_layout)
+    package_source_root = _package_source_root(ctx.label.workspace_name, package, sibling_repository_layout)
     for include in ctx.attr.includes:
         includes_attr = _expand(ctx, include, additional_make_variable_substitutions)
         if includes_attr.startswith("/"):
             continue
         includes_path = paths.get_relative(package_exec_path, includes_attr)
-        if not sibling_repository_layout and _contains_up_level_references(includes_path):
+        if not sibling_repository_layout and paths.contains_up_level_references(includes_path):
             fail("Path references a path above the execution root.", attr = "includes")
 
         if includes_path == ".":
@@ -1251,7 +1241,6 @@ cc_helper = struct(
     get_expanded_env = _get_expanded_env,
     has_target_constraints = _has_target_constraints,
     is_non_empty_list_or_select = _is_non_empty_list_or_select,
-    grep_includes_executable = _grep_includes_executable,
     expand_make_variables_for_copts = _expand_make_variables_for_copts,
     build_linking_context_from_libraries = _build_linking_context_from_libraries,
     is_stamping_enabled = _is_stamping_enabled,
@@ -1274,4 +1263,5 @@ cc_helper = struct(
     repository_exec_path = _repository_exec_path,
     proto_output_root = _proto_output_root,
     cc_toolchain_build_variables = _cc_toolchain_build_variables,
+    package_source_root = _package_source_root,
 )

@@ -356,25 +356,6 @@ public class ExecutionOptions extends OptionsBase {
   }
 
   @Option(
-      name = "experimental_prioritize_local_actions",
-      defaultValue = "true",
-      documentationCategory = OptionDocumentationCategory.UNCATEGORIZED,
-      effectTags = {OptionEffectTag.EXECUTION},
-      help =
-          "If set, actions that can only run locally are given first chance at acquiring resources,"
-              + " dynamically run workers get second chance, and dynamically-run standalone actions"
-              + " come last.")
-  public boolean prioritizeLocalActions;
-
-  @Option(
-      name = "debug_print_action_contexts",
-      defaultValue = "false",
-      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
-      effectTags = {OptionEffectTag.UNKNOWN},
-      help = "Print the contents of the SpawnActionContext and ContextProviders maps.")
-  public boolean debugPrintActionContexts;
-
-  @Option(
       name = "cache_computed_file_digests",
       defaultValue = "50000",
       documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
@@ -440,14 +421,6 @@ public class ExecutionOptions extends OptionsBase {
               + " --experimental_execution_log_file (unordered binary protobuf format),"
               + " --subcommands (for displaying subcommands in terminal output).")
   public PathFragment executionLogBinaryFile;
-
-  @Option(
-      name = "experimental_execution_log_spawn_metrics",
-      defaultValue = "false",
-      documentationCategory = OptionDocumentationCategory.UNCATEGORIZED,
-      effectTags = {OptionEffectTag.UNKNOWN},
-      help = "Include spawn metrics in the executed spawns log.")
-  public boolean executionLogSpawnMetrics;
 
   @Option(
       name = "execution_log_json_file",

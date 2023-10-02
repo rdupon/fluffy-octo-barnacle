@@ -14,7 +14,7 @@
 
 import glob
 import os
-import unittest
+from absl.testing import absltest
 from src.test.py.bazel import test_base
 
 
@@ -283,9 +283,7 @@ class BazelWindowsCppTest(test_base.TestBase):
     self.ScratchFile('main/other_main.cc', ['int main() {return 0;}'])
 
     # Building //main:main should succeed
-    self.RunBazel(
-        ['build', '//main:main', '--incompatible_avoid_conflict_dlls']
-    )
+    self.RunBazel(['build', '//main:main'])
     main_bin = os.path.join(bazel_bin, 'main/main.exe')
 
     # Run the main_bin binary to see if it runs successfully
@@ -304,7 +302,6 @@ class BazelWindowsCppTest(test_base.TestBase):
         'build',
         '//main:main',
         '//main:other_main',
-        '--incompatible_avoid_conflict_dlls',
     ])
     other_main_bin = os.path.join(bazel_bin, 'main/other_main.exe')
 
@@ -1198,4 +1195,4 @@ class BazelWindowsCppTest(test_base.TestBase):
 
 
 if __name__ == '__main__':
-  unittest.main()
+  absltest.main()

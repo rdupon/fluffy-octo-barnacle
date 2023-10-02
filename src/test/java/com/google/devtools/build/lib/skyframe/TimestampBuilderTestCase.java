@@ -35,6 +35,7 @@ import com.google.devtools.build.lib.actions.ActionKeyContext;
 import com.google.devtools.build.lib.actions.ActionLogBufferPathGenerator;
 import com.google.devtools.build.lib.actions.ActionLookupData;
 import com.google.devtools.build.lib.actions.ActionLookupKey;
+import com.google.devtools.build.lib.actions.ActionOutputDirectoryHelper;
 import com.google.devtools.build.lib.actions.ActionResult;
 import com.google.devtools.build.lib.actions.Actions;
 import com.google.devtools.build.lib.actions.Artifact;
@@ -181,34 +182,18 @@ public abstract class TimestampBuilderTestCase extends FoundationTestCase {
     return createBuilder(actionCache, 1, /*keepGoing=*/ false);
   }
 
-  protected BuilderWithResult createBuilder(
-      ActionCache actionCache, GraphInconsistencyReceiver graphInconsistencyReceiver)
-      throws Exception {
-    return createBuilder(
-        actionCache,
-        1,
-        /*keepGoing=*/ false,
-        /*evaluationProgressReceiver=*/ null,
-        graphInconsistencyReceiver);
-  }
-
   /** Create a ParallelBuilder with a DatabaseDependencyChecker using the specified ActionCache. */
   protected BuilderWithResult createBuilder(
-      ActionCache actionCache, final int threadCount, final boolean keepGoing) throws Exception {
+      ActionCache actionCache, int threadCount, boolean keepGoing) throws Exception {
     return createBuilder(
-        actionCache,
-        threadCount,
-        keepGoing,
-        /*evaluationProgressReceiver=*/ null,
-        GraphInconsistencyReceiver.THROWING);
+        actionCache, threadCount, keepGoing, /* evaluationProgressReceiver= */ null);
   }
 
   protected BuilderWithResult createBuilder(
-      final ActionCache actionCache,
-      final int threadCount,
-      final boolean keepGoing,
-      @Nullable EvaluationProgressReceiver evaluationProgressReceiver,
-      GraphInconsistencyReceiver graphInconsistencyReceiver)
+      ActionCache actionCache,
+      int threadCount,
+      boolean keepGoing,
+      @Nullable EvaluationProgressReceiver evaluationProgressReceiver)
       throws Exception {
     AtomicReference<PathPackageLocator> pkgLocator =
         new AtomicReference<>(
@@ -280,8 +265,10 @@ public abstract class TimestampBuilderTestCase extends FoundationTestCase {
                         /* packageProgress= */ null,
                         PackageFunction.ActionOnIOExceptionReadingBuildFile.UseOriginalIOException
                             .INSTANCE,
+                        /* shouldUseRepoDotBazel= */ true,
                         GlobbingStrategy.SKYFRAME_HYBRID,
-                        k -> ThreadStateReceiver.NULL_INSTANCE))
+                        k -> ThreadStateReceiver.NULL_INSTANCE,
+                        /* cpuBoundSemaphore= */ new AtomicReference<>()))
                 .put(
                     SkyFunctions.PACKAGE_LOOKUP,
                     new PackageLookupFunction(
@@ -309,7 +296,7 @@ public abstract class TimestampBuilderTestCase extends FoundationTestCase {
                 .buildOrThrow(),
             differencer,
             evaluationProgressReceiver,
-            graphInconsistencyReceiver,
+            GraphInconsistencyReceiver.THROWING,
             EventFilter.FULL_STORAGE,
             new EmittedEventState(),
             /* keepEdges= */ true,
@@ -362,6 +349,7 @@ public abstract class TimestampBuilderTestCase extends FoundationTestCase {
             options,
             new ActionCacheChecker(
                 actionCache, null, actionKeyContext, ALWAYS_EXECUTE_FILTER, null),
+            ActionOutputDirectoryHelper.createForTesting(),
             /* outputService= */ null,
             /* trackIncrementalState= */ true);
         skyframeActionExecutor.setActionExecutionProgressReportingObjects(
@@ -413,9 +401,6 @@ public abstract class TimestampBuilderTestCase extends FoundationTestCase {
   /** A non-persistent cache. */
   protected InMemoryActionCache inMemoryCache;
 
-  protected GraphInconsistencyReceiver graphInconsistencyReceiver =
-      GraphInconsistencyReceiver.THROWING;
-
   protected SkyFunction actionTemplateExpansionFunction;
 
   /** A class that records an event. */
@@ -464,12 +449,9 @@ public abstract class TimestampBuilderTestCase extends FoundationTestCase {
     return createBuilder(AMNESIAC_CACHE);
   }
 
-  /**
-   * Creates and returns a new caching builder based on the {@link #inMemoryCache} and {@link
-   * #graphInconsistencyReceiver}.
-   */
+  /** Creates and returns a new caching builder based on the {@link #inMemoryCache}. */
   protected BuilderWithResult cachingBuilder() throws Exception {
-    return createBuilder(inMemoryCache, graphInconsistencyReceiver);
+    return createBuilder(inMemoryCache);
   }
 
   /** {@link Builder} that saves its most recent {@link EvaluationResult}. */

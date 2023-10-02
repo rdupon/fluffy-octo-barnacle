@@ -390,6 +390,60 @@ public final class ModuleInfoExtractorTest {
   }
 
   @Test
+  public void providerInit() throws Exception {
+    Module module =
+        exec(
+            "def _my_info_init(x_value, y_value = 0):",
+            "    '''MyInfo constructor",
+            "",
+            "    Args:",
+            "        x_value: my x value",
+            "        y_value: my y value",
+            "    '''",
+            "    return {'x': x_value, 'y': y_value}",
+            "",
+            "_MyInfo, _new_my_info = provider(",
+            "    doc = '''My provider''',",
+            "    fields = ['x', 'y'],",
+            "    init = _my_info_init,",
+            ")",
+            "",
+            "namespace = struct(",
+            "    MyInfo = _MyInfo,",
+            ")");
+    ModuleInfo moduleInfo = getExtractor().extractFrom(module);
+    assertThat(moduleInfo.getProviderInfoList())
+        .containsExactly(
+            ProviderInfo.newBuilder()
+                .setProviderName("namespace.MyInfo")
+                .setDocString("My provider")
+                .addFieldInfo(ProviderFieldInfo.newBuilder().setName("x"))
+                .addFieldInfo(ProviderFieldInfo.newBuilder().setName("y"))
+                .setInit(
+                    StarlarkFunctionInfo.newBuilder()
+                        .setFunctionName("namespace.MyInfo")
+                        .setDocString("MyInfo constructor")
+                        .addParameter(
+                            FunctionParamInfo.newBuilder()
+                                .setName("x_value")
+                                .setDocString("my x value")
+                                .setMandatory(true)
+                                .build())
+                        .addParameter(
+                            FunctionParamInfo.newBuilder()
+                                .setName("y_value")
+                                .setDocString("my y value")
+                                .setDefaultValue("0")
+                                .build())
+                        .setOriginKey(
+                            OriginKey.newBuilder()
+                                .setName("_my_info_init")
+                                .setFile(fakeLabelString)))
+                .setOriginKey(OriginKey.newBuilder().setName("_MyInfo").setFile(fakeLabelString))
+                .build());
+  }
+
+  @Test
   public void ruleDocstring() throws Exception {
     Module module =
         exec(
@@ -442,6 +496,51 @@ public final class ModuleInfoExtractorTest {
                         .addOriginKey(
                             OriginKey.newBuilder().setName("DefaultInfo").setFile("<native>"))
                         .addOriginKey(OriginKey.newBuilder().setName("LegacyStructInfo")))
+                .build());
+  }
+
+  @Test
+  public void ruleTest() throws Exception {
+    Module module =
+        exec(
+            "MyInfo = provider()",
+            "def _my_impl(ctx):",
+            "    pass",
+            "my_test = rule(",
+            "    implementation = _my_impl,",
+            "    test = True",
+            ")");
+    ModuleInfo moduleInfo = getExtractor().extractFrom(module);
+    assertThat(moduleInfo.getRuleInfoList())
+        .ignoringFields(RuleInfo.ATTRIBUTE_FIELD_NUMBER) // ignore implicit attributes
+        .containsExactly(
+            RuleInfo.newBuilder()
+                .setRuleName("my_test")
+                .setOriginKey(OriginKey.newBuilder().setName("my_test").setFile(fakeLabelString))
+                .setTest(true)
+                .setExecutable(true)
+                .build());
+  }
+
+  @Test
+  public void ruleExecutable() throws Exception {
+    Module module =
+        exec(
+            "MyInfo = provider()",
+            "def _my_impl(ctx):",
+            "    pass",
+            "my_binary = rule(",
+            "    implementation = _my_impl,",
+            "    executable = True",
+            ")");
+    ModuleInfo moduleInfo = getExtractor().extractFrom(module);
+    assertThat(moduleInfo.getRuleInfoList())
+        .ignoringFields(RuleInfo.ATTRIBUTE_FIELD_NUMBER) // ignore implicit attributes
+        .containsExactly(
+            RuleInfo.newBuilder()
+                .setRuleName("my_binary")
+                .setOriginKey(OriginKey.newBuilder().setName("my_binary").setFile(fakeLabelString))
+                .setExecutable(true)
                 .build());
   }
 
@@ -518,6 +617,7 @@ public final class ModuleInfoExtractorTest {
                 .setName("deprecated_license")
                 .setType(AttributeType.STRING_LIST)
                 .setDefaultValue("[\"none\"]")
+                .setNonconfigurable(true)
                 .build());
   }
 
@@ -624,11 +724,13 @@ public final class ModuleInfoExtractorTest {
                 .setName("k")
                 .setType(AttributeType.OUTPUT)
                 .setDefaultValue("None")
+                .setNonconfigurable(true)
                 .build(),
             AttributeInfo.newBuilder()
                 .setName("l")
                 .setType(AttributeType.OUTPUT_LIST)
                 .setDefaultValue("[]")
+                .setNonconfigurable(true)
                 .build());
   }
 

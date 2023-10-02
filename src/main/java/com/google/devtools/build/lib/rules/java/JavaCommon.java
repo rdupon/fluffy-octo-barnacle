@@ -33,6 +33,7 @@ import com.google.devtools.build.lib.analysis.Util;
 import com.google.devtools.build.lib.analysis.test.InstrumentedFilesCollector;
 import com.google.devtools.build.lib.analysis.test.InstrumentedFilesCollector.InstrumentationSpec;
 import com.google.devtools.build.lib.analysis.test.InstrumentedFilesInfo;
+import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.collect.nestedset.Order;
@@ -61,9 +62,10 @@ public class JavaCommon {
           .withDependencyAttributes(
               "deps", "data", "resources", "resource_jars", "exports", "runtime_deps", "jars");
 
+  private boolean isInitialized = false;
   private ClasspathConfiguredFragment classpathFragment = new ClasspathConfiguredFragment();
   private JavaCompilationArtifacts javaArtifacts = JavaCompilationArtifacts.EMPTY;
-  private ImmutableList<String> javacOpts;
+  private ImmutableList<String> javacOpts = ImmutableList.of();
 
   // Targets treated as deps in compilation time, runtime time and both
   private final ImmutableMap<ClasspathType, ImmutableList<TransitiveInfoCollection>>
@@ -260,7 +262,7 @@ public class JavaCommon {
       throws InterruptedException {
     ImmutableList.Builder<String> javacOpts =
         ImmutableList.<String>builder()
-            .addAll(javaToolchain.getJavacOptions(ruleContext))
+            .addAll(javaToolchain.getJavacOptionsAsList(ruleContext))
             .addAll(extraRuleJavacOpts);
     if (activePlugins
         .plugins()
@@ -287,7 +289,7 @@ public class JavaCommon {
     ImmutableList.Builder<String> result = ImmutableList.builder();
     for (JavaPackageConfigurationProvider provider : toolchain.packageConfiguration()) {
       if (provider.matches(ruleContext.getLabel())) {
-        result.addAll(provider.javacopts());
+        result.addAll(provider.javacoptsAsList());
       }
     }
     return result.build();
@@ -314,8 +316,9 @@ public class JavaCommon {
     return javaRuntime.javaBinaryExecPathFragment();
   }
 
-  public static PathFragment getJavaExecutable(RuleContext ruleContext) {
-    return JavaRuntimeInfo.from(ruleContext).javaBinaryExecPathFragment();
+  public static PathFragment getJavaExecutable(
+      RuleContext ruleContext, Label javaRuntimeToolchainType) {
+    return JavaRuntimeInfo.from(ruleContext, javaRuntimeToolchainType).javaBinaryExecPathFragment();
   }
 
   /**
@@ -323,11 +326,11 @@ public class JavaCommon {
    *
    * @param launcher if non-null, the cc_binary used to launch the Java Virtual Machine
    */
-  public static String getJavaExecutableForStub(
-      RuleContext ruleContext, @Nullable Artifact launcher) {
+  public String getJavaExecutableForStub(RuleContext ruleContext, @Nullable Artifact launcher) {
     Preconditions.checkState(ruleContext.getConfiguration().hasFragment(JavaConfiguration.class));
     PathFragment javaExecutable;
-    JavaRuntimeInfo javaRuntime = JavaRuntimeInfo.from(ruleContext);
+    JavaRuntimeInfo javaRuntime =
+        JavaRuntimeInfo.from(ruleContext, semantics.getJavaRuntimeToolchainType());
 
     if (launcher != null) {
       javaExecutable = launcher.getRootRelativePath();
@@ -361,8 +364,7 @@ public class JavaCommon {
   }
 
   /** Returns the string that the stub should use to determine the JVM binary (java) path */
-  public static String getJavaBinSubstitution(
-      RuleContext ruleContext, @Nullable Artifact launcher) {
+  public String getJavaBinSubstitution(RuleContext ruleContext, @Nullable Artifact launcher) {
     return getJavaBinSubstitutionFromJavaExecutable(
         ruleContext, getJavaExecutableForStub(ruleContext, launcher));
   }
@@ -430,7 +432,8 @@ public class JavaCommon {
   public JavaTargetAttributes.Builder initCommon(
       Collection<Artifact> extraSrcs, Iterable<String> extraJavacOpts)
       throws RuleErrorException, InterruptedException {
-    Preconditions.checkState(javacOpts == null);
+    Preconditions.checkState(!isInitialized);
+    isInitialized = true;
     activePlugins = collectPlugins();
     javacOpts = computeJavacOpts(ImmutableList.copyOf(extraJavacOpts));
 

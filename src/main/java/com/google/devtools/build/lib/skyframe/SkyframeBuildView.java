@@ -47,7 +47,6 @@ import com.google.devtools.build.lib.actions.TotalAndConfiguredTargetOnlyMetric;
 import com.google.devtools.build.lib.analysis.AnalysisFailureEvent;
 import com.google.devtools.build.lib.analysis.AnalysisOperationWatcher;
 import com.google.devtools.build.lib.analysis.AnalysisPhaseCompleteEvent;
-import com.google.devtools.build.lib.analysis.AspectValue;
 import com.google.devtools.build.lib.analysis.CachingAnalysisEnvironment;
 import com.google.devtools.build.lib.analysis.ConfiguredAspect;
 import com.google.devtools.build.lib.analysis.ConfiguredRuleClassProvider;
@@ -99,6 +98,7 @@ import com.google.devtools.build.lib.skyframe.SkyframeErrorProcessor.ErrorProces
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor.ConfigureTargetsResult;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor.FailureToRetrieveIntrospectedValueException;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor.TopLevelActionConflictReport;
+import com.google.devtools.build.lib.skyframe.config.BuildConfigurationKey;
 import com.google.devtools.build.lib.util.DetailedExitCode;
 import com.google.devtools.build.lib.util.DetailedExitCode.DetailedExitCodeComparator;
 import com.google.devtools.build.lib.util.OrderedSetMultimap;
@@ -112,7 +112,6 @@ import com.google.devtools.build.skyframe.SkyValue;
 import com.google.devtools.build.skyframe.WalkableGraph;
 import com.google.devtools.common.options.OptionDefinition;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -430,6 +429,7 @@ public final class SkyframeBuildView {
             skyframeExecutor.getCyclesReporter(),
             eventHandler,
             keepGoing,
+            skyframeExecutor.tracksStateForIncrementality(),
             eventBus,
             bugReporter);
 
@@ -437,7 +437,7 @@ public final class SkyframeBuildView {
     // Sometimes there are action conflicts, but the actions aren't actually required to run by the
     // build. In such cases, the conflict should still be reported to the user.
     // See OutputArtifactConflictTest#unusedActionsStillConflict.
-    Collection<Exception> reportedExceptions = Sets.newHashSet();
+    Set<String> reportedArtifactPrefixConflictExceptions = Sets.newHashSet();
     for (Entry<ActionAnalysisMetadata, ConflictException> bad : actionConflicts.entrySet()) {
       ConflictException ex = bad.getValue();
       DetailedExitCode detailedExitCode;
@@ -455,7 +455,7 @@ public final class SkyframeBuildView {
         }
       } catch (ArtifactPrefixConflictException apce) {
         detailedExitCode = apce.getDetailedExitCode();
-        if (reportedExceptions.add(apce)) {
+        if (reportedArtifactPrefixConflictExceptions.add(apce.getMessage())) {
           eventHandler.handle(Event.error(apce.getMessage()));
         }
       }
@@ -712,9 +712,10 @@ public final class SkyframeBuildView {
                           skyframeExecutor.getCyclesReporter(),
                           eventHandler,
                           keepGoing,
+                          skyframeExecutor.tracksStateForIncrementality(),
                           eventBus,
                           bugReporter,
-                          /*includeExecutionPhase=*/ true)
+                          /* includeExecutionPhase= */ true)
                       .executionDetailedExitCode());
             }
           }
@@ -737,6 +738,7 @@ public final class SkyframeBuildView {
                       skyframeExecutor.getCyclesReporter(),
                       eventHandler,
                       keepGoing,
+                      skyframeExecutor.tracksStateForIncrementality(),
                       eventBus,
                       bugReporter,
                       /* includeExecutionPhase= */ true)
@@ -781,9 +783,10 @@ public final class SkyframeBuildView {
               skyframeExecutor.getCyclesReporter(),
               eventHandler,
               keepGoing,
+              skyframeExecutor.tracksStateForIncrementality(),
               eventBus,
               bugReporter,
-              /*includeExecutionPhase=*/ true);
+              /* includeExecutionPhase= */ true);
       detailedExitCodes.add(errorProcessingResult.executionDetailedExitCode());
 
       foundActionConflictInLatestCheck = !errorProcessingResult.actionConflicts().isEmpty();
@@ -948,7 +951,7 @@ public final class SkyframeBuildView {
       boolean keepGoing)
       throws ViewCreationFailedException, InterruptedException {
     // ArtifactPrefixConflictExceptions come in pairs, and only one should be reported.
-    Set<ArtifactPrefixConflictException> reportedExceptions = Sets.newHashSet();
+    Set<String> reportedArtifactPrefixConflictExceptions = Sets.newHashSet();
 
     // Sometimes a conflicting action can't be traced to a top level target via
     // TopLevelActionConflictReport. We therefore need to print the errors from the conflicts
@@ -967,7 +970,7 @@ public final class SkyframeBuildView {
                           + "': it will not be built")));
         }
       } catch (ArtifactPrefixConflictException apce) {
-        if (reportedExceptions.add(apce)) {
+        if (reportedArtifactPrefixConflictExceptions.add(apce.getMessage())) {
           eventHandler.handle(Event.error(apce.getMessage()));
         }
       }
@@ -1076,16 +1079,14 @@ public final class SkyframeBuildView {
         TopLevelAspectsValue topLevelAspectsValue =
             (TopLevelAspectsValue)
                 skyframeExecutor.getDoneSkyValueForIntrospection(topLevelAspectsKey);
-        topLevelAspectsValue
-            .getTopLevelAspectsValues()
-            .forEach(aspectValue -> aspectKeysBuilder.add(aspectValue.getKey()));
+        aspectKeysBuilder.addAll(topLevelAspectsValue.getTopLevelAspectsMap().keySet());
       } catch (FailureToRetrieveIntrospectedValueException e) {
         // It could happen that the analysis of TopLevelAspectKey wasn't complete: either its own
         // analysis failed, or another error was raise in --nokeep_going mode. In that case, it
         // couldn't be involved in the conflict exception anyway, and we just move on.
         // Unless it's an unexpected interrupt that caused the exception.
         if (e.getCause() instanceof InterruptedException) {
-          BugReport.sendBugReport(e);
+          BugReport.sendNonFatalBugReport(e);
         }
       }
     }
@@ -1145,9 +1146,7 @@ public final class SkyframeBuildView {
         continue;
       }
       TopLevelAspectsValue topLevelAspectsValue = (TopLevelAspectsValue) value.getWrappedSkyValue();
-      for (AspectValue aspectValue : topLevelAspectsValue.getTopLevelAspectsValues()) {
-        aspects.put(aspectValue.getKey(), aspectValue);
-      }
+      aspects.putAll(topLevelAspectsValue.getTopLevelAspectsMap());
     }
     return aspects.buildOrThrow();
   }

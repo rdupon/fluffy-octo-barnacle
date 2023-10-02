@@ -139,7 +139,7 @@ public final class ConfiguredTargetFactory {
       // ConfiguredTargetGraph, but for now, this is the minimally invasive way of providing a sane
       // error message in case a cycle is created by a visibility attribute.
       if (group != null) {
-        provider = group.get(PackageGroupConfiguredTarget.PROVIDER);
+        provider = group.get(PackageSpecificationProvider.PROVIDER);
       }
       if (provider != null) {
         result.addTransitive(provider.getPackageSpecifications());
@@ -423,7 +423,7 @@ public final class ConfiguredTargetFactory {
     if (ruleContext.getConfiguration().allowAnalysisFailures()) {
       ImmutableList.Builder<NestedSet<AnalysisFailure>> analysisFailures = ImmutableList.builder();
       Iterable<? extends TransitiveInfoCollection> infoCollections =
-          Iterables.concat(ruleContext.getConfiguredTargetMap().values(), extraDeps);
+          Iterables.concat(ruleContext.getAllPrerequisites(), extraDeps);
       for (TransitiveInfoCollection infoCollection : infoCollections) {
         AnalysisFailureInfo failureInfo =
             infoCollection.get(AnalysisFailureInfo.STARLARK_CONSTRUCTOR);
@@ -473,7 +473,7 @@ public final class ConfiguredTargetFactory {
       ImmutableList.Builder<AnalysisFailure> analysisFailures = ImmutableList.builder();
 
       for (String errorMessage : ruleContext.getSuppressedErrorMessages()) {
-        analysisFailures.add(new AnalysisFailure(ruleContext.getLabel(), errorMessage));
+        analysisFailures.add(AnalysisFailure.create(ruleContext.getLabel(), errorMessage));
       }
       RuleConfiguredTargetBuilder builder = new RuleConfiguredTargetBuilder(ruleContext);
       builder.addNativeDeclaredProvider(
@@ -592,23 +592,22 @@ public final class ConfiguredTargetFactory {
       return erroredConfiguredAspectWithFailures(ruleContext, analysisFailures);
     }
     if (ruleContext.hasErrors() && !allowAnalysisFailures) {
-      return erroredConfiguredAspect(ruleContext);
+      return erroredConfiguredAspect(ruleContext, null);
     }
 
-    ConfiguredAspect configuredAspect;
-    try {
-      configuredAspect =
-          aspectFactory.create(
-              associatedTarget.getLabel(),
-              configuredTarget,
-              ruleContext,
-              aspect.getParameters(),
-              ruleClassProvider.getToolsRepository());
-      if (configuredAspect == null) {
-        return erroredConfiguredAspect(ruleContext);
-      }
-    } finally {
-      ruleContext.close();
+    ConfiguredAspect configuredAspect =
+        aspectFactory.create(
+            associatedTarget.getLabel(),
+            configuredTarget,
+            ruleContext,
+            aspect.getParameters(),
+            ruleClassProvider.getToolsRepository());
+    if (configuredAspect == null) {
+      return erroredConfiguredAspect(ruleContext, null);
+    } else if (configuredAspect.get(AnalysisFailureInfo.STARLARK_CONSTRUCTOR) != null) {
+      // this was created by #erroredConfiguredAspect, return early to skip validating advertised
+      // providers
+      return configuredAspect;
     }
 
     validateAdvertisedProviders(
@@ -642,17 +641,24 @@ public final class ConfiguredTargetFactory {
    * about the failure.
    */
   @Nullable
-  private static ConfiguredAspect erroredConfiguredAspect(RuleContext ruleContext)
+  public static ConfiguredAspect erroredConfiguredAspect(
+      RuleContext ruleContext,
+      @Nullable RequiredConfigFragmentsProvider requiredConfigFragmentsProvider)
       throws ActionConflictException, InterruptedException {
     if (ruleContext.getConfiguration().allowAnalysisFailures()) {
       ImmutableList.Builder<AnalysisFailure> analysisFailures = ImmutableList.builder();
 
       for (String errorMessage : ruleContext.getSuppressedErrorMessages()) {
-        analysisFailures.add(new AnalysisFailure(ruleContext.getLabel(), errorMessage));
+        analysisFailures.add(AnalysisFailure.create(ruleContext.getLabel(), errorMessage));
       }
       ConfiguredAspect.Builder builder = new ConfiguredAspect.Builder(ruleContext);
       builder.addNativeDeclaredProvider(
           AnalysisFailureInfo.forAnalysisFailures(analysisFailures.build()));
+
+      if (requiredConfigFragmentsProvider != null) {
+        builder.addProvider(requiredConfigFragmentsProvider);
+      }
+
       // Unlike erroredConfiguredTarget, we do not add a RunfilesProvider; that would result in a
       // RunfilesProvider being provided twice in the merged configured target.
 

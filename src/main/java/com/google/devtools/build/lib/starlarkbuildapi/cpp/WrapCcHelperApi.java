@@ -49,10 +49,12 @@ public interface WrapCcHelperApi<
                     starlarkRuleContextT,
                     ?,
                     ? extends CppConfigurationApi<?>,
+                    ?,
                     ?>,
         CompilationInfoT extends CompilationInfoApi<FileT>,
         FileT extends FileApi,
-        CcCompilationContextT extends CcCompilationContextApi<FileT>,
+        CcCompilationContextT extends
+            CcCompilationContextApi<FileT, ? extends CppModuleMapApi<FileT>>,
         WrapCcIncludeProviderT extends WrapCcIncludeProviderApi>
     extends StarlarkValue {
 

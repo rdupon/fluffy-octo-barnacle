@@ -28,6 +28,7 @@ import com.google.devtools.build.lib.packages.Attribute;
 import com.google.devtools.build.lib.packages.BuildType;
 import com.google.devtools.build.lib.packages.BuiltinProvider;
 import com.google.devtools.build.lib.packages.RuleClass;
+import com.google.devtools.build.lib.packages.RuleClass.Builder.RuleClassType;
 import com.google.devtools.build.lib.packages.StarlarkDefinedAspect;
 import com.google.devtools.build.lib.packages.StarlarkProvider;
 import com.google.devtools.build.lib.packages.StarlarkProviderIdentifier;
@@ -217,7 +218,8 @@ final class ModuleInfoExtractor {
     protected void visitRule(String qualifiedName, StarlarkRuleFunction value)
         throws ExtractionException {}
 
-    protected void visitProvider(String qualifiedName, StarlarkProvider value) {}
+    protected void visitProvider(String qualifiedName, StarlarkProvider value)
+        throws ExtractionException {}
 
     protected void visitFunction(String qualifiedName, StarlarkFunction value)
         throws ExtractionException {}
@@ -354,7 +356,15 @@ final class ModuleInfoExtractor {
               .setName(ruleFunction.getName())
               .setFile(labelRenderer.render(ruleFunction.getExtensionLabel())));
       ruleFunction.getDocumentation().ifPresent(ruleInfoBuilder::setDocString);
+
       RuleClass ruleClass = ruleFunction.getRuleClass();
+      if (ruleClass.getRuleClassType() == RuleClassType.TEST) {
+        ruleInfoBuilder.setTest(true);
+      }
+      if (ruleClass.hasAttr("$is_executable", Type.BOOLEAN)) {
+        ruleInfoBuilder.setExecutable(true);
+      }
+
       ruleInfoBuilder.addAttribute(IMPLICIT_NAME_ATTRIBUTE_INFO); // name comes first
       addDocumentableAttributes(
           ruleClass.getAttributes(), ruleInfoBuilder::addAttribute, "rule " + qualifiedName);
@@ -367,7 +377,8 @@ final class ModuleInfoExtractor {
     }
 
     @Override
-    protected void visitProvider(String qualifiedName, StarlarkProvider provider) {
+    protected void visitProvider(String qualifiedName, StarlarkProvider provider)
+        throws ExtractionException {
       ProviderInfo.Builder providerInfoBuilder = ProviderInfo.newBuilder();
       // Record the name under which this symbol is made accessible, which may differ from the
       // symbol's exported name.
@@ -399,6 +410,22 @@ final class ModuleInfoExtractor {
           }
         }
       }
+      // TODO(b/276733504): if init is a dict-returning native method (e.g. `dict`), do we document
+      // it? (This is very unlikely to be useful at present, and would require parsing annotations
+      // on the native method.)
+      if (provider.getInit() instanceof StarlarkFunction) {
+        try {
+          providerInfoBuilder.setInit(
+              StarlarkFunctionInfoExtractor.fromNameAndFunction(
+                  qualifiedName,
+                  (StarlarkFunction) provider.getInit(),
+                  /* withOriginKey= */ true,
+                  labelRenderer));
+        } catch (DocstringParseException e) {
+          throw new ExtractionException(e);
+        }
+      }
+
       moduleInfoBuilder.addProviderInfo(providerInfoBuilder);
     }
 
@@ -474,7 +501,7 @@ final class ModuleInfoExtractor {
           "repository rule " + qualifiedName);
       if (ruleClass.hasAttr("$environ", Type.STRING_LIST)) {
         repositoryRuleInfoBuilder.addAllEnviron(
-            Type.STRING_LIST.cast(ruleClass.getAttributeByName("$environ").getDefaultValue()));
+            Type.STRING_LIST.cast(ruleClass.getAttributeByName("$environ").getDefaultValue(null)));
       }
       moduleInfoBuilder.addRepositoryRuleInfo(repositoryRuleInfoBuilder);
     }
@@ -531,6 +558,9 @@ final class ModuleInfoExtractor {
       Optional.ofNullable(attribute.getDoc()).ifPresent(builder::setDocString);
       builder.setType(getAttributeType(attribute, where));
       builder.setMandatory(attribute.isMandatory());
+      if (!attribute.isConfigurable()) {
+        builder.setNonconfigurable(true);
+      }
       for (ImmutableSet<StarlarkProviderIdentifier> providerGroup :
           attribute.getRequiredProviders().getStarlarkProviders()) {
         // TODO(b/290788853): it is meaningless to require a provider on an attribute of a

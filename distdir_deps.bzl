@@ -18,6 +18,45 @@ This is internal source and is not intended to tell you what version
 you should use for each dependency.
 """
 
+load("//src/tools/bzlmod:utils.bzl", "get_canonical_repo_name")
+
+##################################################################################
+#
+# The list of repositories required while bootstrapping Bazel offline
+#
+##################################################################################
+DIST_ARCHIVE_REPOS = [get_canonical_repo_name(repo) for repo in [
+    "abseil-cpp",
+    "apple_support",
+    "bazel_skylib",
+    "blake3",
+    "c-ares",
+    "com_github_grpc_grpc",
+    "com_google_protobuf",
+    "io_bazel_skydoc",
+    "platforms",
+    "rules_cc",
+    "rules_go",
+    "rules_java",
+    "rules_jvm_external",
+    "rules_license",
+    "rules_pkg",
+    "rules_proto",
+    "rules_python",
+    "upb",
+    "zlib",
+    "zstd-jni",
+]] + [(get_canonical_repo_name("com_github_grpc_grpc") + suffix) for suffix in [
+    # Extra grpc dependencies introduced via its module extension
+    "~grpc_repo_deps_ext~bazel_gazelle",  # TODO: Should be a bazel_dep
+    "~grpc_repo_deps_ext~bazel_skylib",  # TODO: Should be removed
+    "~grpc_repo_deps_ext~com_envoyproxy_protoc_gen_validate",
+    "~grpc_repo_deps_ext~com_github_cncf_udpa",
+    "~grpc_repo_deps_ext~com_google_googleapis",
+    "~grpc_repo_deps_ext~envoy_api",
+    "~grpc_repo_deps_ext~rules_cc",  # TODO: Should be removed
+]]
+
 DIST_DEPS = {
     ########################################
     #
@@ -25,16 +64,16 @@ DIST_DEPS = {
     #
     ########################################
     "platforms": {
-        "archive": "platforms-0.0.6.tar.gz",
-        "sha256": "5308fc1d8865406a49427ba24a9ab53087f17f5266a7aabbfc28823f3916e1ca",
+        "archive": "platforms-0.0.7.tar.gz",
+        "sha256": "3a561c99e7bdbe9173aa653fd579fe849f1d8d67395780ab4770b1f381431d51",
         "urls": [
-            "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.6/platforms-0.0.6.tar.gz",
-            "https://github.com/bazelbuild/platforms/releases/download/0.0.6/platforms-0.0.6.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.7/platforms-0.0.7.tar.gz",
+            "https://github.com/bazelbuild/platforms/releases/download/0.0.7/platforms-0.0.7.tar.gz",
         ],
         "used_in": [
             "additional_distfiles",
         ],
-        "package_version": "0.0.6",
+        "package_version": "0.0.7",
     },
     "bazelci_rules": {
         "archive": "bazelci_rules-1.0.0.tar.gz",
@@ -53,23 +92,23 @@ DIST_DEPS = {
     # Used in src/main/java/com/google/devtools/build/lib/bazel/rules/java/jdk.WORKSPACE.
     # Used in src/test/java/com/google/devtools/build/lib/blackbox/framework/blackbox.WORKSAPCE
     "rules_cc": {
-        "archive": "rules_cc-0.0.8.tar.gz",
-        "sha256": "ae46b722a8b8e9b62170f83bfb040cbf12adb732144e689985a66b26410a7d6f",
-        "urls": ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.8/rules_cc-0.0.8.tar.gz"],
+        "archive": "rules_cc-0.0.9.tar.gz",
+        "sha256": "2037875b9a4456dce4a79d112a8ae885bbc4aad968e6587dca6e64f3a0900cdf",
+        "urls": ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.9/rules_cc-0.0.9.tar.gz"],
         "used_in": [
             "additional_distfiles",
         ],
-        "package_version": "0.0.8",
-        "strip_prefix": "rules_cc-0.0.8",
+        "package_version": "0.0.9",
+        "strip_prefix": "rules_cc-0.0.9",
     },
     "rules_java": {
         "aliases": [
             "rules_java_builtin",
             "rules_java_builtin_for_testing",
         ],
-        "archive": "rules_java-6.3.0.tar.gz",
-        "sha256": "29ba147c583aaf5d211686029842c5278e12aaea86f66bd4a9eb5e525b7f2701",
-        "urls": ["https://github.com/bazelbuild/rules_java/releases/download/6.3.0/rules_java-6.3.0.tar.gz"],
+        "archive": "rules_java-6.3.1.tar.gz",
+        "sha256": "117a1227cdaf813a20a1bba78a9f2d8fb30841000c33e2f2d2a640bd224c9282",
+        "urls": ["https://github.com/bazelbuild/rules_java/releases/download/6.3.1/rules_java-6.3.1.tar.gz"],
         "workspace_file_content": "",
         "used_in": [
             "additional_distfiles",
@@ -100,12 +139,11 @@ DIST_DEPS = {
     #
     #################################################
     "com_google_protobuf": {
-        "archive": "v21.7.tar.gz",
-        "sha256": "75be42bd736f4df6d702a0e4e4d30de9ee40eac024c4b845d17ae4cc831fe4ae",
+        "archive": "protobuf-all-21.7.zip",
+        "sha256": "5493a21f5ed3fc502e66fec6b9449c06a551ced63002fa48903c40dfa8de7a4a",
         "strip_prefix": "protobuf-21.7",
         "urls": [
-            "https://mirror.bazel.build/github.com/protocolbuffers/protobuf/archive/v21.7.tar.gz",
-            "https://github.com/protocolbuffers/protobuf/archive/v21.7.tar.gz",
+            "https://github.com/protocolbuffers/protobuf/releases/download/v21.7/protobuf-all-21.7.zip",
         ],
         "patch_args": ["-p1"],
         "patches": ["//third_party/protobuf:21.7.patch"],
@@ -116,7 +154,7 @@ DIST_DEPS = {
             "@rules_license//licenses/generic:notice",
         ],
         "license_text": "LICENSE",
-        "package_version": "3.19.6",
+        "package_version": "21.7",
     },
     "com_github_grpc_grpc": {
         "archive": "v1.48.1.tar.gz",
@@ -292,26 +330,26 @@ DIST_DEPS = {
     #
     ###################################################
     "android_gmaven_r8": {
-        "archive": "r8-8.0.40.jar",
-        "sha256": "ab1379835c7d3e5f21f80347c3c81e2f762e0b9b02748ae5232c3afa14adf702",
+        "archive": "r8-8.1.56.jar",
+        "sha256": "57a696749695a09381a87bc2f08c3a8ed06a717a5caa3ef878a3077e0d3af19d",
         "urls": [
-            "https://maven.google.com/com/android/tools/r8/8.0.40/r8-8.0.40.jar",
+            "https://maven.google.com/com/android/tools/r8/8.1.56/r8-8.1.56.jar",
         ],
         "used_in": [
         ],
         "package_version": "8.0.40",
     },
     "bazel_skylib": {
-        "archive": "bazel-skylib-1.3.0.tar.gz",
-        "sha256": "74d544d96f4a5bb630d465ca8bbcfe231e3594e5aae57e1edbf17a6eb3ca2506",
+        "archive": "bazel-skylib-1.4.1.tar.gz",
+        "sha256": "b8a1527901774180afc798aeb28c4634bdccf19c4d98e7bdd1ce79d1fe9aaad7",
         "urls": [
-            "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.4.1/bazel-skylib-1.4.1.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.4.1/bazel-skylib-1.4.1.tar.gz",
         ],
         "used_in": [
             "additional_distfiles",
         ],
-        "package_version": "1.3.0",
+        "package_version": "1.4.1",
     },
     "io_bazel_skydoc": {
         "archive": "1ef781ced3b1443dca3ed05dec1989eca1a4e1cd.tar.gz",
@@ -338,16 +376,16 @@ DIST_DEPS = {
         "package_version": "0.0.7",
     },
     "rules_pkg": {
-        "archive": "rules_pkg-0.8.0.tar.gz",
-        "sha256": "eea0f59c28a9241156a47d7a8e32db9122f3d50b505fae0f33de6ce4d9b61834",
+        "archive": "rules_pkg-0.9.1.tar.gz",
+        "sha256": "8f9ee2dc10c1ae514ee599a8b42ed99fa262b757058f65ad3c384289ff70c4b8",
         "urls": [
-            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.8.0/rules_pkg-0.8.0.tar.gz",
-            "https://github.com/bazelbuild/rules_pkg/releases/download/0.8.0/rules_pkg-0.8.0.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
+            "https://github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
         ],
         "used_in": [
             "additional_distfiles",
         ],
-        "package_version": "0.8.0",
+        "package_version": "0.9.1",
     },
     "rules_jvm_external": {
         "archive": "rules_jvm_external-5.2.tar.gz",
@@ -366,10 +404,10 @@ DIST_DEPS = {
         "package_version": "5.2",
     },
     "rules_python": {
-        "sha256": "ffc7b877c95413c82bfd5482c017edcf759a6250d8b24e82f41f3c8b8d9e287e",
-        "strip_prefix": "rules_python-0.19.0",
-        "urls": ["https://github.com/bazelbuild/rules_python/releases/download/0.19.0/rules_python-0.19.0.tar.gz"],
-        "archive": "rules_python-0.19.0.tar.gz",
+        "sha256": "0a8003b044294d7840ac7d9d73eef05d6ceb682d7516781a4ec62eeb34702578",
+        "strip_prefix": "rules_python-0.24.0",
+        "urls": ["https://github.com/bazelbuild/rules_python/releases/download/0.24.0/rules_python-0.24.0.tar.gz"],
+        "archive": "rules_python-0.24.0.tar.gz",
         "used_in": ["additional_distfiles"],
     },
     "rules_testing": {
@@ -384,13 +422,12 @@ DIST_DEPS = {
         "package_version": "0.0.4",
     },
     "desugar_jdk_libs": {
-        # Commit 5847d6a06302136d95a14b4cbd4b55a9c9f1436e of 2021-03-10
-        "archive": "5847d6a06302136d95a14b4cbd4b55a9c9f1436e.zip",
-        "sha256": "299452e6f4a4981b2e6d22357f7332713382a63e4c137f5fd6b89579f6d610cb",
-        "strip_prefix": "desugar_jdk_libs-5847d6a06302136d95a14b4cbd4b55a9c9f1436e",
+        # Commit 24dcd1dead0b64aae3d7c89ca9646b5dc4068009 of 2023-09-18
+        "archive": "24dcd1dead0b64aae3d7c89ca9646b5dc4068009.zip",
+        "sha256": "ef71be474fbb3b3b7bd70cda139f01232c63b9e1bbd08c058b00a8d538d4db17",
+        "strip_prefix": "desugar_jdk_libs-24dcd1dead0b64aae3d7c89ca9646b5dc4068009",
         "urls": [
-            "https://mirror.bazel.build/github.com/google/desugar_jdk_libs/archive/5847d6a06302136d95a14b4cbd4b55a9c9f1436e.zip",
-            "https://github.com/google/desugar_jdk_libs/archive/5847d6a06302136d95a14b4cbd4b55a9c9f1436e.zip",
+            "https://github.com/google/desugar_jdk_libs/archive/24dcd1dead0b64aae3d7c89ca9646b5dc4068009.zip",
         ],
         "used_in": [
             "additional_distfiles",
@@ -407,28 +444,28 @@ DIST_DEPS = {
         "package_version": "2.6",
     },
     "openjdk_linux_vanilla": {
-        "archive": "zulu20.30.11-ca-jdk20.0.1-linux_x64.tar.gz",
-        "sha256": "ec5c0426a0eb2b0460968a044665ed4603b224acd5e20c379e9d7890511da683",
-        "strip_prefix": "zulu20.30.11-ca-jdk20.0.1-linux_x64",
+        "archive": "zulu21.28.85-ca-jdk21.0.0-linux_x64.tar.gz",
+        "sha256": "0c0eadfbdc47a7ca64aeab51b9c061f71b6e4d25d2d87674512e9b6387e9e3a6",
+        "strip_prefix": "zulu21.28.85-ca-jdk21.0.0-linux_x64",
         "urls": [
-            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-linux_x64.tar.gz",
-            "https://cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-linux_x64.tar.gz",
+            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-linux_x64.tar.gz",
+            "https://cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-linux_x64.tar.gz",
         ],
         "used_in": [
         ],
     },
     "openjdk_linux_aarch64_vanilla": {
-        "archive": "zulu20.30.11-ca-jdk20.0.1-linux_aarch64.tar.gz",
-        "sha256": "2487cf315d1f56291c1f41fb56a34a7f863ce5bf85cadd284c79ea3f848d707c",
-        "strip_prefix": "zulu20.30.11-ca-jdk20.0.1-linux_aarch64",
+        "archive": "zulu21.28.85-ca-jdk21.0.0-linux_aarch64.tar.gz",
+        "sha256": "1fb64b8036c5d463d8ab59af06bf5b6b006811e6012e3b0eb6bccf57f1c55835",
+        "strip_prefix": "zulu21.28.85-ca-jdk21.0.0-linux_aarch64",
         "urls": [
-            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-linux_aarch64.tar.gz",
-            "https://cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-linux_aarch64.tar.gz",
+            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-linux_aarch64.tar.gz",
+            "https://cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-linux_aarch64.tar.gz",
         ],
         "used_in": [
         ],
     },
-    # JDK20 unavailable so use JDK19 instead for linux s390x.
+    # JDK21 unavailable so use JDK19 instead for linux s390x.
     "openjdk_linux_s390x_vanilla": {
         "archive": "OpenJDK19U-jdk_s390x_linux_hotspot_19.0.2_7.tar.gz",
         "sha256": "f2512f9a8e9847dd5d3557c39b485a8e7a1ef37b601dcbcb748d22e49f44815c",
@@ -440,6 +477,7 @@ DIST_DEPS = {
         "used_in": [
         ],
     },
+    # JDK21 unavailable so use JDK19 instead for linux ppc64le.
     "openjdk_linux_ppc64le_vanilla": {
         "archive": "OpenJDK20U-jdk_ppc64le_linux_hotspot_20_36.tar.gz",
         "sha256": "45dde71faf8cbb78fab3c976894259655c8d3de827347f23e0ebe5710921dded",
@@ -451,46 +489,46 @@ DIST_DEPS = {
         "used_in": [],
     },
     "openjdk_macos_x86_64_vanilla": {
-        "archive": "zulu20.30.11-ca-jdk20.0.1-macosx_x64.tar.gz",
-        "sha256": "befee9db92345d5146945061b721d3a6c6e182471c1536f87dbadfd5aab0e241",
-        "strip_prefix": "zulu20.30.11-ca-jdk20.0.1-macosx_x64",
+        "archive": "zulu21.28.85-ca-jdk21.0.0-macosx_x64.tar.gz",
+        "sha256": "9639b87db586d0c89f7a9892ae47f421e442c64b97baebdff31788fbe23265bd",
+        "strip_prefix": "zulu21.28.85-ca-jdk21.0.0-macosx_x64",
         "urls": [
-            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-macosx_x64.tar.gz",
-            "https://cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-macosx_x64.tar.gz",
+            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-macosx_x64.tar.gz",
+            "https://cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-macosx_x64.tar.gz",
         ],
         "used_in": [
         ],
     },
     "openjdk_macos_aarch64_vanilla": {
-        "archive": "zulu20.30.11-ca-jdk20.0.1-macosx_aarch64.tar.gz",
-        "sha256": "01e59f0160d051524bb16d865652d25d00a85390581737a8f35f89057c80892d",
-        "strip_prefix": "zulu20.30.11-ca-jdk20.0.1-macosx_aarch64",
+        "archive": "zulu21.28.85-ca-jdk21.0.0-macosx_aarch64.tar.gz",
+        "sha256": "2a7a99a3ea263dbd8d32a67d1e6e363ba8b25c645c826f5e167a02bbafaff1fa",
+        "strip_prefix": "zulu21.28.85-ca-jdk21.0.0-macosx_aarch64",
         "urls": [
-            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-macosx_aarch64.tar.gz",
-            "https://cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-macosx_aarch64.tar.gz",
+            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-macosx_aarch64.tar.gz",
+            "https://cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-macosx_aarch64.tar.gz",
         ],
         "used_in": [
         ],
     },
     "openjdk_win_vanilla": {
-        "archive": "zulu20.30.11-ca-jdk20.0.1-win_x64.zip",
-        "sha256": "8a97ee11da578292f7c9e772f3edd3f083fa4f34f47a98e3abefb625ab2225ba",
-        "strip_prefix": "zulu20.30.11-ca-jdk20.0.1-win_x64",
+        "archive": "zulu21.28.85-ca-jdk21.0.0-win_x64.zip",
+        "sha256": "e9959d500a0d9a7694ac243baf657761479da132f0f94720cbffd092150bd802",
+        "strip_prefix": "zulu21.28.85-ca-jdk21.0.0-win_x64",
         "urls": [
-            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-win_x64.zip",
-            "https://cdn.azul.com/zulu/bin/zulu20.30.11-ca-jdk20.0.1-win_x64.zip",
+            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-win_x64.zip",
+            "https://cdn.azul.com/zulu/bin/zulu21.28.85-ca-jdk21.0.0-win_x64.zip",
         ],
         "used_in": [
         ],
     },
-    # JDK20 unavailable so use JDK19 instead for win aarch64.
+    # JDK21 unavailable from zulu, we'll use Microsoft's OpenJDK build instead.
     "openjdk_win_arm64_vanilla": {
-        "archive": "zulu19.28.81-ca-jdk19.0.0-win_aarch64.zip",
-        "sha256": "e73e851638066c48421a60e01ce7d956c1de0935620e1b66d8bbbd6cdd4f815e",
-        "strip_prefix": "zulu19.28.81-ca-jdk19.0.0-win_aarch64",
+        "archive": "microsoft-jdk-21.0.0-windows-aarch64.zip",
+        "sha256": "975603e684f2ec5a525b3b5336d6aa0b09b5b7d2d0d9e271bd6a9892ad550181",
+        "strip_prefix": "microsoft-jdk-21.0.0-windows-aarch64",
         "urls": [
-            "https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu19.28.81-ca-jdk19.0.0-win_aarch64.zip",
-            "https://cdn.azul.com/zulu/bin/zulu19.28.81-ca-jdk19.0.0-win_aarch64.zip",
+            "https://mirror.bazel.build/aka.ms/download-jdk/microsoft-jdk-21.0.0-windows-aarch64.zip",
+            "https://aka.ms/download-jdk/microsoft-jdk-21.0.0-windows-aarch64.zip",
         ],
         "used_in": [
         ],

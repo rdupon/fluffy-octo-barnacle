@@ -14,7 +14,6 @@
 
 package com.google.devtools.build.lib.starlarkbuildapi.java;
 
-import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.docgen.annot.DocCategory;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.LabelSyntaxException;
@@ -54,6 +53,172 @@ public interface JavaCommonApi<
         StarlarkRuleContextT extends StarlarkRuleContextApi<ConstraintValueT>,
         StarlarkActionFactoryT extends StarlarkActionFactoryApi>
     extends StarlarkValue {
+
+  @StarlarkMethod(
+      name = "merge",
+      doc = "Merges the given providers into a single JavaInfo.",
+      parameters = {
+        @Param(
+            name = "providers",
+            positional = true,
+            named = false,
+            allowedTypes = {@ParamType(type = Sequence.class, generic1 = JavaInfoApi.class)},
+            doc = "The list of providers to merge.")
+      })
+  default JavaInfoT mergeJavaProviders(Sequence<?> providers /* <JavaInfoT> expected. */)
+      throws EvalException {
+    throw new UnsupportedOperationException();
+  }
+
+  @StarlarkMethod(
+      name = "pack_sources",
+      doc =
+          "Packs sources and source jars into a single source jar file. "
+              + "The return value is typically passed to"
+              + "<p><code><a class=\"anchor\" href=\"../providers/JavaInfo.html\">"
+              + "JavaInfo</a>#source_jar</code></p>."
+              + "At least one of parameters output_jar or output_source_jar is required.",
+      parameters = {
+        @Param(name = "actions", named = true, doc = "ctx.actions"),
+        @Param(
+            name = "output_jar",
+            positional = false,
+            named = true,
+            allowedTypes = {
+              @ParamType(type = FileApi.class),
+              @ParamType(type = NoneType.class),
+            },
+            defaultValue = "None",
+            doc =
+                "Deprecated: The output jar of the rule. Used to name the resulting source jar. "
+                    + "The parameter sets output_source_jar parameter to `{output_jar}-src.jar`."
+                    + "Use output_source_jar parameter directly instead.",
+            disableWithFlag = BuildLanguageOptions.INCOMPATIBLE_JAVA_COMMON_PARAMETERS,
+            valueWhenDisabled = "None"),
+        @Param(
+            name = "output_source_jar",
+            positional = false,
+            named = true,
+            allowedTypes = {
+              @ParamType(type = FileApi.class),
+              @ParamType(type = NoneType.class),
+            },
+            defaultValue = "None",
+            doc = "The output source jar."),
+        @Param(
+            name = "sources",
+            positional = false,
+            named = true,
+            allowedTypes = {@ParamType(type = Sequence.class, generic1 = FileApi.class)},
+            defaultValue = "[]",
+            doc = "A list of Java source files to be packed into the source jar."),
+        @Param(
+            name = "source_jars",
+            positional = false,
+            named = true,
+            allowedTypes = {@ParamType(type = Sequence.class, generic1 = FileApi.class)},
+            defaultValue = "[]",
+            doc = "A list of source jars to be packed into the source jar."),
+        @Param(
+            name = "java_toolchain",
+            positional = false,
+            named = true,
+            doc = "A JavaToolchainInfo to used to find the ijar tool."),
+        @Param(
+            name = "host_javabase",
+            positional = false,
+            named = true,
+            doc =
+                "Deprecated: You can drop this parameter (host_javabase is provided with "
+                    + "java_toolchain)",
+            defaultValue = "None",
+            disableWithFlag = BuildLanguageOptions.INCOMPATIBLE_JAVA_COMMON_PARAMETERS,
+            valueWhenDisabled = "None"),
+      })
+  default FileApi packSources(
+      StarlarkActionFactoryT actions,
+      Object outputJar,
+      Object outputSourceJar,
+      Sequence<?> sourceFiles, // <FileT> expected.
+      Sequence<?> sourceJars, // <FileT> expected.
+      JavaToolchainT javaToolchain,
+      Object hostJavabase)
+      throws EvalException {
+    throw new UnsupportedOperationException();
+  }
+
+  @StarlarkMethod(
+      name = "stamp_jar",
+      doc =
+          "Stamps a jar with a target label for <code>add_dep</code> support. "
+              + "The return value is typically passed to "
+              + "<code><a class=\"anchor\" href=\"../providers/JavaInfo.html\">"
+              + "JavaInfo</a>#compile_jar</code>. "
+              + "Prefer to use "
+              + "<code><a class=\"anchor\" href=\"#run_ijar\">run_ijar</a></code> "
+              + "when possible.",
+      parameters = {
+        @Param(name = "actions", named = true, doc = "ctx.actions"),
+        @Param(
+            name = "jar",
+            positional = false,
+            named = true,
+            doc = "The jar to run stamp_jar on."),
+        @Param(
+            name = "target_label",
+            positional = false,
+            named = true,
+            doc =
+                "A target label to stamp the jar with. Used for <code>add_dep</code> support. "
+                    + "Typically, you would pass <code>ctx.label</code> to stamp the jar "
+                    + "with the current rule's label."),
+        @Param(
+            name = "java_toolchain",
+            positional = false,
+            named = true,
+            doc = "A JavaToolchainInfo to used to find the stamp_jar tool."),
+      })
+  default FileApi stampJar(
+      StarlarkActionFactoryT actions, FileT jar, Label targetLabel, JavaToolchainT javaToolchain)
+      throws EvalException {
+    throw new UnsupportedOperationException();
+  }
+
+  @StarlarkMethod(
+      name = "run_ijar",
+      doc =
+          "Runs ijar on a jar, stripping it of its method bodies. This helps reduce rebuilding "
+              + "of dependent jars during any recompiles consisting only of simple changes to "
+              + "method implementations. The return value is typically passed to "
+              + "<code><a class=\"anchor\" href=\"../providers/JavaInfo.html\">"
+              + "JavaInfo</a>#compile_jar</code>.",
+      parameters = {
+        @Param(name = "actions", named = true, doc = "ctx.actions"),
+        @Param(name = "jar", positional = false, named = true, doc = "The jar to run ijar on."),
+        @Param(
+            name = "target_label",
+            positional = false,
+            named = true,
+            allowedTypes = {
+              @ParamType(type = Label.class),
+              @ParamType(type = NoneType.class),
+            },
+            defaultValue = "None",
+            doc =
+                "A target label to stamp the jar with. Used for <code>add_dep</code> support. "
+                    + "Typically, you would pass <code>ctx.label</code> to stamp the jar "
+                    + "with the current rule's label."),
+        @Param(
+            name = "java_toolchain",
+            positional = false,
+            named = true,
+            doc = "A JavaToolchainInfo to used to find the ijar tool."),
+      })
+  default FileApi runIjar(
+      StarlarkActionFactoryT actions, FileT jar, Object targetLabel, JavaToolchainT javaToolchain)
+      throws EvalException {
+    throw new UnsupportedOperationException();
+  }
 
   @StarlarkMethod(
       name = "compile",
@@ -283,7 +448,7 @@ public interface JavaCommonApi<
                     + " Optional."),
       },
       useStarlarkThread = true)
-  JavaInfoT createJavaCompileAction(
+  default JavaInfoT createJavaCompileAction(
       StarlarkRuleContextT starlarkRuleContext,
       Sequence<?> sourceJars, // <FileT> expected.
       Sequence<?> sourceFiles, // <FileT> expected.
@@ -315,7 +480,11 @@ public interface JavaCommonApi<
       Sequence<?> addExports, // <String> expected.
       Sequence<?> addOpens, // <String> expected.
       StarlarkThread thread)
-      throws EvalException, InterruptedException, RuleErrorException, LabelSyntaxException;
+      throws EvalException, InterruptedException, RuleErrorException, LabelSyntaxException {
+    // this will never be invoked now that only the Starlark implementation in `@_builtins` is used.
+    // this method declaration exists purely for documentation.
+    throw new UnsupportedOperationException();
+  }
 
   @StarlarkMethod(
       name = "create_header_compilation_action",
@@ -351,7 +520,7 @@ public interface JavaCommonApi<
       Depset directJars,
       Object bootClassPath,
       Depset compileTimeDeps,
-      Sequence<?> javacOpts,
+      Depset javacOpts,
       String strictDepsMode,
       Label targetLabel,
       Object injectingRuleKind,
@@ -366,54 +535,54 @@ public interface JavaCommonApi<
         @Param(name = "ctx"),
         @Param(name = "java_toolchain"),
         @Param(name = "output"),
-        @Param(name = "deps_proto"),
-        @Param(name = "gen_class"),
-        @Param(name = "gen_source"),
         @Param(name = "manifest_proto"),
-        @Param(name = "native_header_jar"),
         @Param(name = "plugin_info"),
-        @Param(name = "sources"),
-        @Param(name = "source_jars"),
-        @Param(name = "resources"),
-        @Param(name = "resource_jars"),
         @Param(name = "compilation_classpath"),
-        @Param(name = "classpath_resources"),
-        @Param(name = "sourcepath"),
         @Param(name = "direct_jars"),
         @Param(name = "bootclasspath"),
         @Param(name = "compile_time_java_deps"),
         @Param(name = "javac_opts"),
         @Param(name = "strict_deps_mode"),
         @Param(name = "target_label"),
-        @Param(name = "injecting_rule_kind"),
-        @Param(name = "enable_jspecify"),
-        @Param(name = "enable_direct_classpath"),
-        @Param(name = "additional_inputs"),
-        @Param(name = "additional_outputs"),
+        @Param(name = "deps_proto", defaultValue = "None", named = true),
+        @Param(name = "gen_class", defaultValue = "None", named = true),
+        @Param(name = "gen_source", defaultValue = "None", named = true),
+        @Param(name = "native_header_jar", defaultValue = "None", named = true),
+        @Param(name = "sources", defaultValue = "None", named = true),
+        @Param(name = "source_jars", defaultValue = "[]", named = true),
+        @Param(name = "resources", defaultValue = "[]", named = true),
+        @Param(name = "resource_jars", defaultValue = "None", named = true),
+        @Param(name = "classpath_resources", defaultValue = "[]", named = true),
+        @Param(name = "sourcepath", defaultValue = "[]", named = true),
+        @Param(name = "injecting_rule_kind", defaultValue = "None", named = true),
+        @Param(name = "enable_jspecify", defaultValue = "True", named = true),
+        @Param(name = "enable_direct_classpath", defaultValue = "True", named = true),
+        @Param(name = "additional_inputs", defaultValue = "[]", named = true),
+        @Param(name = "additional_outputs", defaultValue = "[]", named = true),
       })
   void createCompilationAction(
       StarlarkRuleContextT ctx,
       JavaToolchainT javaToolchain,
       FileT output,
-      Object depsProto,
-      Object genClass,
-      Object genSource,
       FileT manifestProto,
-      FileT nativeHeader,
       Info pluginInfo,
-      Depset sourceFiles,
-      Sequence<?> sourceJars,
-      Sequence<?> resources,
-      Depset resourceJars,
       Depset compileTimeClasspath,
-      Sequence<?> classpathResources,
-      Sequence<?> sourcepath,
       Depset directJars,
       Object bootClassPath,
       Depset compileTimeJavaDeps,
-      Sequence<?> javacOpts,
+      Depset javacOpts,
       String strictDepsMode,
       Label targetLabel,
+      Object depsProto,
+      Object genClass,
+      Object genSource,
+      Object nativeHeader,
+      Object sourceFiles,
+      Sequence<?> sourceJars,
+      Sequence<?> resources,
+      Object resourceJars,
+      Sequence<?> classpathResources,
+      Sequence<?> sourcepath,
       Object injectingRuleKind,
       boolean enableJSpecify,
       boolean enableDirectClasspath,
@@ -434,10 +603,17 @@ public interface JavaCommonApi<
             doc =
                 "A JavaToolchainInfo to be used for retrieving the ijar "
                     + "tool. Only set when use_ijar is True."),
+        @Param(
+            name = "as_depset",
+            positional = false,
+            named = true,
+            documented = false,
+            defaultValue = "False")
       })
   // TODO(b/78512644): migrate callers to passing explicit javacopts or using custom toolchains, and
   // delete
-  ImmutableList<String> getDefaultJavacOpts(JavaToolchainT javaToolchain) throws EvalException;
+  StarlarkValue getDefaultJavacOpts(JavaToolchainT javaToolchain, boolean asDepset)
+      throws EvalException;
 
   @StarlarkMethod(
       name = "JavaToolchainInfo",
@@ -466,17 +642,10 @@ public interface JavaCommonApi<
       name = "target_kind",
       parameters = {
         @Param(name = "target", positional = true, named = false, doc = "The target."),
-        @Param(
-            name = "dereference_aliases",
-            positional = false,
-            named = true,
-            defaultValue = "False",
-            documented = false),
       },
       documented = false,
       useStarlarkThread = true)
-  String getTargetKind(Object target, boolean dereferenceAliases, StarlarkThread thread)
-      throws EvalException;
+  String getTargetKind(Object target, StarlarkThread thread) throws EvalException;
 
   @StarlarkMethod(
       name = "get_build_info",
@@ -551,4 +720,16 @@ public interface JavaCommonApi<
       useStarlarkThread = true)
   JavaInfoT wrapJavaInfo(Info javaInfo, StarlarkThread thread)
       throws EvalException, RuleErrorException;
+
+  @StarlarkMethod(
+      name = "intern_javac_opts",
+      parameters = {@Param(name = "javac_opts")},
+      documented = false)
+  Sequence<String> internJavacOpts(Object javacOpts) throws EvalException, RuleErrorException;
+
+  @StarlarkMethod(
+      name = "incompatible_disable_non_executable_java_binary",
+      useStarlarkThread = true,
+      documented = false)
+  boolean incompatibleDisableNonExecutableJavaBinary(StarlarkThread thread);
 }

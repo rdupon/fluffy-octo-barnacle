@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.events.ExtendedEventHandler.Postable;
 import com.ryanharter.auto.value.gson.GenerateTypeAdapter;
+import java.util.Optional;
 
 /**
  * This object serves as a container for the transitive digest (obtained from transitive .bzl files)
@@ -29,6 +30,11 @@ import com.ryanharter.auto.value.gson.GenerateTypeAdapter;
 @GenerateTypeAdapter
 public abstract class LockFileModuleExtension implements Postable {
 
+  public static Builder builder() {
+    return new AutoValue_LockFileModuleExtension.Builder()
+        .setModuleExtensionMetadata(Optional.empty());
+  }
+
   @SuppressWarnings("mutable")
   public abstract byte[] getBzlTransitiveDigest();
 
@@ -38,12 +44,24 @@ public abstract class LockFileModuleExtension implements Postable {
 
   public abstract ImmutableMap<String, RepoSpec> getGeneratedRepoSpecs();
 
-  public static LockFileModuleExtension create(
-      byte[] transitiveDigest,
-      ImmutableMap<Label, String> accumulatedFileDigests,
-      ImmutableMap<String, String> envVariables,
-      ImmutableMap<String, RepoSpec> generatedRepoSpecs) {
-    return new AutoValue_LockFileModuleExtension(
-        transitiveDigest, accumulatedFileDigests, envVariables, generatedRepoSpecs);
+  public abstract Optional<ModuleExtensionMetadata> getModuleExtensionMetadata();
+
+  public abstract Builder toBuilder();
+
+  /** Builder type for {@link LockFileModuleExtension}. */
+  @AutoValue.Builder
+  public abstract static class Builder {
+
+    public abstract Builder setBzlTransitiveDigest(byte[] digest);
+
+    public abstract Builder setAccumulatedFileDigests(ImmutableMap<Label, String> value);
+
+    public abstract Builder setEnvVariables(ImmutableMap<String, String> value);
+
+    public abstract Builder setGeneratedRepoSpecs(ImmutableMap<String, RepoSpec> value);
+
+    public abstract Builder setModuleExtensionMetadata(Optional<ModuleExtensionMetadata> value);
+
+    public abstract LockFileModuleExtension build();
   }
 }

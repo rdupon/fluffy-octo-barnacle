@@ -542,6 +542,31 @@ public abstract class AbstractQueryTest<T> {
     writeFile("d/BUILD", "exports_files(['d'])");
   }
 
+  /**
+   * Setup a BUILD file that loads two .scl files, one directly and the other through a .bzl file.
+   */
+  protected void writeBzlAndSclFiles() throws Exception {
+    writeFile(
+        "foo/BUILD", //
+        "load('//bar:direct.scl', 'x')",
+        "load('//bar:intermediate.bzl', 'y')",
+        "sh_library(",
+        "    name = 'foo',",
+        "    tags = [x, y],",
+        ")");
+    writeFile("bar/BUILD");
+    writeFile(
+        "bar/direct.scl", //
+        "x = 'X'");
+    writeFile(
+        "bar/intermediate.bzl", //
+        "load(':indirect.scl', _y='y')",
+        "y = _y");
+    writeFile(
+        "bar/indirect.scl", //
+        "y = 'Y'");
+  }
+
   protected void writeBuildFilesWithConfigurableAttributesUnconditionally() throws Exception {
     writeFile(
         "conditions/BUILD",
@@ -922,6 +947,7 @@ public abstract class AbstractQueryTest<T> {
   public void testLet() throws Exception {
     writeBuildFiles3();
 
+    helper.setQuerySettings(Setting.NO_IMPLICIT_DEPS);
     assertContains(
         eval("//b + //c + //d"),
         eval("let x = //a in deps($x) except $x" + getDependencyCorrectionWithGen()));
@@ -1868,6 +1894,15 @@ public abstract class AbstractQueryTest<T> {
   }
 
   @Test
+  public void testBuildfilesContainingScl() throws Exception {
+    writeBzlAndSclFiles();
+
+    assertThat(evalToString("buildfiles(deps(//foo))"))
+        .isEqualTo(
+            "//bar:BUILD //bar:direct.scl //bar:indirect.scl //bar:intermediate.bzl //foo:BUILD");
+  }
+
+  @Test
   public void badRuleInDeps() throws Exception {
     runBadRuleInDeps(Code.STARLARK_EVAL_ERROR);
   }
@@ -2297,6 +2332,27 @@ public abstract class AbstractQueryTest<T> {
     assertThat(evalToString("@my_repo//...:*")).isEqualTo(REPO_A_AB_ALL);
     assertThat(evalToString("@my_repo//a/...")).isEqualTo(REPO_A_AB_RULES);
     assertThat(evalToString("@my_repo//a/b/...")).isEqualTo(REPO_AB_RULES);
+  }
+
+  @Test
+  public void testLabelFlagDefaultAppearsInDepsQuery() throws Exception {
+    writeFile(
+        "donut/BUILD",
+        "sh_binary(name = 'thief', srcs = ['thief.sh'])",
+        "label_flag(name = 'myflag', build_setting_default = ':thief')");
+
+    assertThat(evalToString("deps(//donut:myflag, 1)")).isEqualTo("//donut:myflag //donut:thief");
+  }
+
+  @Test
+  public void testLabelSettingDefaultAppearsInDepsQuery() throws Exception {
+    writeFile(
+        "donut/BUILD",
+        "sh_binary(name = 'thief', srcs = ['thief.sh'])",
+        "label_setting(name = 'mysetting', build_setting_default = ':thief')");
+
+    assertThat(evalToString("deps(//donut:mysetting, 1)"))
+        .isEqualTo("//donut:mysetting //donut:thief");
   }
 
   /**

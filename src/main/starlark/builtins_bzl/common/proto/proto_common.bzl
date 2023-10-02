@@ -78,15 +78,18 @@ def _remove_repo(file):
         return short_path.removeprefix(workspace_root + "/")
     return short_path
 
-def get_import_path(proto_source):
-    """Returns the import path of a .proto file, i.e. clean path without any repo or strip_prefixes remapping
+def _get_import_path(proto_file):
+    """Returns the import path of a .proto file
+
+    This is the path as used for the the file that can be used in an `import` statement in another
+    .proto file.
 
     Args:
-      proto_source: (ProtoSourceInfo) The .proto file
+      proto_file: (File) The .proto file
     Returns:
       (str) import path
     """
-    repo_path = _remove_repo(proto_source)
+    repo_path = _remove_repo(proto_file)
     index = repo_path.find("_virtual_imports/")
     if index >= 0:
         index = repo_path.find("/", index + len("_virtual_imports/"))
@@ -118,14 +121,15 @@ def _check_collocated(label, proto_info, proto_lang_toolchain_info):
       proto_lang_toolchain_info: (ProtoLangToolchainInfo) The proto lang toolchain info.
         Obtained from a `proto_lang_toolchain` target.
     """
+    PackageSpecificationInfo = _builtins.toplevel.PackageSpecificationInfo
     if (proto_info.direct_descriptor_set.owner.package != label.package and
         proto_lang_toolchain_info.allowlist_different_package):
-        if not proto_lang_toolchain_info.allowlist_different_package.isAvailableFor(label):
+        if not proto_lang_toolchain_info.allowlist_different_package[PackageSpecificationInfo].contains(label):
             fail(("lang_proto_library '%s' may only be created in the same package " +
                   "as proto_library '%s'") % (label, proto_info.direct_descriptor_set.owner))
     if (proto_info.direct_descriptor_set.owner.package != label.package and
         hasattr(proto_info, "allow_exports")):
-        if not proto_info.allow_exports.isAvailableFor(label):
+        if not proto_info.allow_exports[PackageSpecificationInfo].contains(label):
             fail(("lang_proto_library '%s' may only be created in the same package " +
                   "as proto_library '%s'") % (label, proto_info.direct_descriptor_set.owner))
 
@@ -346,11 +350,40 @@ def _declare_generated_files(
 
     return outputs
 
+def _find_toolchain(ctx, legacy_attr, toolchain_type):
+    if _builtins.toplevel.proto_common.incompatible_enable_proto_toolchain_resolution():
+        toolchain = ctx.toolchains[toolchain_type]
+        if not toolchain:
+            fail("No toolchains registered for '%s'." % toolchain_type)
+        return toolchain.proto
+    else:
+        return getattr(ctx.attr, legacy_attr)[ProtoLangToolchainInfo]
+
+def _use_toolchain(toolchain_type):
+    if _builtins.toplevel.proto_common.incompatible_enable_proto_toolchain_resolution():
+        return [_builtins.toplevel.config_common.toolchain_type(toolchain_type, mandatory = False)]
+    else:
+        return []
+
+def _if_legacy_toolchain(legacy_attr_dict):
+    if _builtins.toplevel.proto_common.incompatible_enable_proto_toolchain_resolution():
+        return {}
+    else:
+        return legacy_attr_dict
+
+toolchains = struct(
+    use_toolchain = _use_toolchain,
+    find_toolchain = _find_toolchain,
+    if_legacy_toolchain = _if_legacy_toolchain,
+    INCOMPATIBLE_ENABLE_PROTO_TOOLCHAIN_RESOLUTION = _builtins.toplevel.proto_common.incompatible_enable_proto_toolchain_resolution(),
+)
+
 proto_common_do_not_use = struct(
     compile = _compile,
     declare_generated_files = _declare_generated_files,
     check_collocated = _check_collocated,
     experimental_should_generate_code = _experimental_should_generate_code,
     experimental_filter_sources = _experimental_filter_sources,
+    get_import_path = _get_import_path,
     ProtoLangToolchainInfo = ProtoLangToolchainInfo,
 )

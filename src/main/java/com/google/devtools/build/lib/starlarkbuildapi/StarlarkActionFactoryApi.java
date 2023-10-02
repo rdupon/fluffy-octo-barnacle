@@ -17,7 +17,6 @@ package com.google.devtools.build.lib.starlarkbuildapi;
 import com.google.devtools.build.docgen.annot.DocCategory;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.collect.nestedset.Depset;
-import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import net.starlark.java.annot.Param;
 import net.starlark.java.annot.ParamType;
 import net.starlark.java.annot.StarlarkBuiltin;
@@ -258,14 +257,23 @@ public interface StarlarkActionFactoryApi extends StarlarkValue {
             named = true,
             positional = false,
             defaultValue = "None",
-            doc = "Progress message to show to the user during the build.")
-      })
+            doc = "Progress message to show to the user during the build."),
+        @Param(
+            name = "use_exec_root_for_source",
+            named = true,
+            positional = false,
+            defaultValue = "unbound",
+            documented = false)
+      },
+      useStarlarkThread = true)
   void symlink(
       FileApi output,
       Object targetFile,
       Object targetPath,
       Boolean isExecutable,
-      Object progressMessage)
+      Object progressMessage,
+      Object useExecRootForSourceObject,
+      StarlarkThread thread)
       throws EvalException;
 
   @StarlarkMethod(
@@ -408,7 +416,16 @@ public interface StarlarkActionFactoryApi extends StarlarkValue {
             defaultValue = "False",
             named = true,
             positional = false,
-            doc = "Whether the action should use the built in shell environment or not."),
+            doc =
+                "Whether the action should use the default shell environment, which consists of a"
+                    + " few OS-dependent variables as well as variables set via <a"
+                    + " href=\"/reference/command-line-reference#flag--action_env\"><code>--action_env</code></a>.<p>If"
+                    + " both <code>use_default_shell_env</code> and <code>env</code> are set to"
+                    + " <code>True</code>, values set in <code>env</code> will overwrite the"
+                    + " default shell environment if <a "
+                    + "href=\"/reference/command-line-reference#flag--incompatible_merge_fixed_and_default_shell_env\"><code>--incompatible_merge_fixed_and_default_shell_env</code></a>"
+                    + " is enabled (default). If the flag is not enabled, <code>env</code> is"
+                    + " ignored."),
         @Param(
             name = "env",
             allowedTypes = {
@@ -418,7 +435,14 @@ public interface StarlarkActionFactoryApi extends StarlarkValue {
             defaultValue = "None",
             named = true,
             positional = false,
-            doc = "Sets the dictionary of environment variables."),
+            doc =
+                "Sets the dictionary of environment variables.<p>If both"
+                    + " <code>use_default_shell_env</code> and <code>env</code> are set to"
+                    + " <code>True</code>, values set in <code>env</code> will overwrite the"
+                    + " default shell environment if <a "
+                    + "href=\"/reference/command-line-reference#flag--incompatible_merge_fixed_and_default_shell_env\"><code>--incompatible_merge_fixed_and_default_shell_env</code></a>"
+                    + " is enabled (default). If the flag is not enabled, <code>env</code> is"
+                    + " ignored."),
         @Param(
             name = "execution_requirements",
             allowedTypes = {
@@ -655,7 +679,16 @@ public interface StarlarkActionFactoryApi extends StarlarkValue {
             defaultValue = "False",
             named = true,
             positional = false,
-            doc = "Whether the action should use the built in shell environment or not."),
+            doc =
+                "Whether the action should use the default shell environment, which consists of a"
+                    + " few OS-dependent variables as well as variables set via <a"
+                    + " href=\"/reference/command-line-reference#flag--action_env\"><code>--action_env</code></a>.<p>If"
+                    + " both <code>use_default_shell_env</code> and <code>env</code> are set to"
+                    + " <code>True</code>, values set in <code>env</code> will overwrite the"
+                    + " default shell environment if <a "
+                    + "href=\"/reference/command-line-reference#flag--incompatible_merge_fixed_and_default_shell_env\"><code>--incompatible_merge_fixed_and_default_shell_env</code></a>"
+                    + " is enabled (default). If the flag is not enabled, <code>env</code> is"
+                    + " ignored."),
         @Param(
             name = "env",
             allowedTypes = {
@@ -665,7 +698,14 @@ public interface StarlarkActionFactoryApi extends StarlarkValue {
             defaultValue = "None",
             named = true,
             positional = false,
-            doc = "Sets the dictionary of environment variables."),
+            doc =
+                "Sets the dictionary of environment variables.<p>If both"
+                    + " <code>use_default_shell_env</code> and <code>env</code> are set to"
+                    + " <code>True</code>, values set in <code>env</code> will overwrite the"
+                    + " default shell environment if <a "
+                    + "href=\"/reference/command-line-reference#flag--incompatible_merge_fixed_and_default_shell_env\"><code>--incompatible_merge_fixed_and_default_shell_env</code></a>"
+                    + " is enabled (default). If the flag is not enabled, <code>env</code> is"
+                    + " ignored."),
         @Param(
             name = "execution_requirements",
             allowedTypes = {
@@ -811,9 +851,7 @@ public interface StarlarkActionFactoryApi extends StarlarkValue {
             positional = false,
             allowedTypes = {@ParamType(type = TemplateDictApi.class)},
             defaultValue = "unbound",
-            enableOnlyWithFlag = BuildLanguageOptions.EXPERIMENTAL_LAZY_TEMPLATE_EXPANSION,
-            valueWhenDisabled = "unbound",
-            doc = "Experimental: Substitutions to make when expanding the template.")
+            doc = "Substitutions to make when expanding the template.")
       })
   void expandTemplate(
       FileApi template,
@@ -831,8 +869,7 @@ public interface StarlarkActionFactoryApi extends StarlarkValue {
 
   @StarlarkMethod(
       name = "template_dict",
-      doc = "Experimental: Returns a TemplateDict object for memory-efficient template expansion.",
-      enableOnlyWithFlag = BuildLanguageOptions.EXPERIMENTAL_LAZY_TEMPLATE_EXPANSION)
+      doc = "Returns a TemplateDict object for memory-efficient template expansion.")
   TemplateDictApi templateDict();
 
   @StarlarkMethod(

@@ -24,12 +24,10 @@ import com.google.devtools.build.lib.analysis.ConfiguredRuleClassProvider;
 import com.google.devtools.build.lib.analysis.ServerDirectories;
 import com.google.devtools.build.lib.analysis.config.BuildConfigurationValue;
 import com.google.devtools.build.lib.analysis.config.BuildOptions;
-import com.google.devtools.build.lib.analysis.config.CoreOptions;
 import com.google.devtools.build.lib.analysis.config.FragmentFactory;
 import com.google.devtools.build.lib.analysis.config.FragmentOptions;
 import com.google.devtools.build.lib.analysis.config.InvalidConfigurationException;
 import com.google.devtools.build.lib.clock.BlazeClock;
-import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.packages.PackageFactory;
 import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.packages.util.MockToolsConfig;
@@ -95,6 +93,7 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
     analysisMock = AnalysisMock.get();
 
     ConfiguredRuleClassProvider ruleClassProvider = analysisMock.createRuleClassProvider();
+    buildOptionClasses = ruleClassProvider.getFragmentRegistry().getOptionsClasses();
     PathPackageLocator pkgLocator =
         new PathPackageLocator(
             outputBase,
@@ -133,8 +132,7 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
         ImmutableList.of(
             PrecomputedValue.injected(
                 PrecomputedValue.BASELINE_CONFIGURATION,
-                BuildOptions.getDefaultBuildOptionsForFragments(
-                    ImmutableList.of(CoreOptions.class))),
+                BuildOptions.getDefaultBuildOptionsForFragments(buildOptionClasses)),
             PrecomputedValue.injected(
                 RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE, Optional.empty()),
             PrecomputedValue.injected(
@@ -161,7 +159,6 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
     mockToolsConfig = new MockToolsConfig(rootDirectory);
     analysisMock.setupMockClient(mockToolsConfig);
     analysisMock.setupMockWorkspaceFiles(directories.getEmbeddedBinariesRoot());
-    buildOptionClasses = ruleClassProvider.getFragmentRegistry().getOptionsClasses();
     fragmentFactory = new FragmentFactory();
   }
 
@@ -231,15 +228,15 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
   /** Returns a raw {@link BuildConfigurationValue} with the given parameters. */
   protected BuildConfigurationValue createRaw(
       BuildOptions buildOptions,
-      String repositoryName,
-      boolean siblingRepositoryLayout,
-      String transitionDirectoryNameFragment)
+      String mnemonic,
+      String workspaceName,
+      boolean siblingRepositoryLayout)
       throws Exception {
-    return BuildConfigurationValue.create(
+    return BuildConfigurationValue.createForTesting(
         buildOptions,
-        RepositoryName.create(repositoryName),
+        mnemonic,
+        workspaceName,
         siblingRepositoryLayout,
-        transitionDirectoryNameFragment,
         skyframeExecutor.getBlazeDirectoriesForTesting(),
         skyframeExecutor.getRuleClassProviderForTesting(),
         fragmentFactory);

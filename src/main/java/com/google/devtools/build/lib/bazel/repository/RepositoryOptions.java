@@ -191,30 +191,6 @@ public class RepositoryOptions extends OptionsBase {
   public double experimentalScaleTimeouts;
 
   @Option(
-      name = "experimental_repository_hash_file",
-      defaultValue = "",
-      documentationCategory = OptionDocumentationCategory.INPUT_STRICTNESS,
-      effectTags = {OptionEffectTag.AFFECTS_OUTPUTS},
-      metadataTags = {OptionMetadataTag.EXPERIMENTAL},
-      help =
-          "If non-empty, specifies a file containing a resolved value, against which"
-              + " the repository directory hashes should be verified")
-  public String repositoryHashFile;
-
-  @Option(
-      name = "experimental_verify_repository_rules",
-      allowMultiple = true,
-      defaultValue = "null",
-      documentationCategory = OptionDocumentationCategory.INPUT_STRICTNESS,
-      effectTags = {OptionEffectTag.AFFECTS_OUTPUTS},
-      metadataTags = {OptionMetadataTag.EXPERIMENTAL},
-      help =
-          "If list of repository rules for which the hash of the output directory should be"
-              + " verified, provided a file is specified by"
-              + " --experimental_repository_hash_file.")
-  public List<String> experimentalVerifyRepositoryRules;
-
-  @Option(
       name = "experimental_resolved_file_instead_of_workspace",
       defaultValue = "",
       documentationCategory = OptionDocumentationCategory.GENERIC_INPUTS,
@@ -287,8 +263,9 @@ public class RepositoryOptions extends OptionsBase {
   public CheckDirectDepsMode checkDirectDependencies;
 
   @Option(
-      name = "experimental_repository_cache_urls_as_default_canonical_id",
-      defaultValue = "false",
+      name = "repository_cache_urls_as_default_canonical_id",
+      oldName = "experimental_repository_cache_urls_as_default_canonical_id",
+      defaultValue = "true",
       documentationCategory = OptionDocumentationCategory.BAZEL_CLIENT_OPTIONS,
       effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS},
       metadataTags = {OptionMetadataTag.EXPERIMENTAL},

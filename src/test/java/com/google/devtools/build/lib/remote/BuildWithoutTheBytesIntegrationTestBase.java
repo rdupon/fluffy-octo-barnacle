@@ -35,6 +35,7 @@ import com.google.devtools.build.lib.skyframe.TreeArtifactValue;
 import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.util.io.RecordingOutErr;
 import com.google.devtools.build.lib.vfs.Path;
+import com.google.devtools.build.lib.vfs.PathFragment;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -96,9 +97,8 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
   public void disableRunfiles_buildSuccessfully() throws Exception {
     // Disable on Windows since it fails for unknown reasons.
     // TODO(chiwang): Enable it on windows.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
+    assumeFalse(OS.getCurrent() == OS.WINDOWS);
+
     write(
         "BUILD",
         "genrule(",
@@ -134,7 +134,7 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "  outs = ['out/foobar.txt'],",
         "  cmd = 'cat $(location :foo) > $@ && echo bar >> $@',",
         ")");
-    addOptions("--experimental_remote_download_regex=.*foo\\.txt$");
+    addOptions("--remote_download_regex=.*foo\\.txt$");
 
     buildTarget("//:foobar");
     waitDownloads();
@@ -179,7 +179,7 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "  outs = ['out/foobar.txt'],",
         "  cmd = 'cat $(location :foo) > $@ && echo bar >> $@',",
         ")");
-    addOptions("--experimental_remote_download_regex=.*foo\\.txt$");
+    addOptions("--remote_download_regex=.*foo\\.txt$");
 
     buildTarget("//:foobar");
     waitDownloads();
@@ -220,7 +220,7 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
     buildTarget("//:foobar");
     // Add the new option here because waitDownloads below will internally create a new command
     // which will parse the new option.
-    addOptions("--experimental_remote_download_regex=.*foobar\\.txt$");
+    addOptions("--remote_download_regex=.*foobar\\.txt$");
     waitDownloads();
 
     assertOutputsDoNotExist("//:foo");
@@ -239,11 +239,6 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
 
   @Test
   public void downloadOutputsWithRegex_treeOutput_regexMatchesTreeFile() throws Exception {
-    // Disable on Windows since it fails for unknown reasons.
-    // TODO(chiwang): Enable it on windows.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
     writeOutputDirRule();
     write(
         "BUILD",
@@ -252,7 +247,7 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "  name = 'foo',",
         "  content_map = {'file-1': '1', 'file-2': '2', 'file-3': '3'},",
         ")");
-    addOptions("--experimental_remote_download_regex=.*foo/file-2$");
+    addOptions("--remote_download_regex=.*foo/file-2$");
 
     buildTarget("//:foo");
     waitDownloads();
@@ -272,7 +267,7 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "  name = 'foo',",
         "  content_map = {'file-1': '1', 'file-2': '2', 'file-3': '3'},",
         ")");
-    addOptions("--experimental_remote_download_regex=.*foo$");
+    addOptions("--remote_download_regex=.*foo$");
 
     buildTarget("//:foo");
     waitDownloads();
@@ -305,7 +300,7 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "  outs = ['foo/file-3'],",
         "  cmd = 'echo file-3 > $@',",
         ")");
-    addOptions("--experimental_remote_download_regex=.*foo$");
+    addOptions("--remote_download_regex=.*foo$");
 
     buildTarget("//:file-1", "//:file-2", "//:file-3");
     waitDownloads();
@@ -348,19 +343,12 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
   }
 
   @Test
-  public void symlinkToSourceFile() throws Exception {
+  public void localAction_inputSymlinkToSourceFile() throws Exception {
     write(
         "a/defs.bzl",
         "def _impl(ctx):",
-        "  if ctx.attr.chain_length < 1:",
-        "    fail('chain_length must be > 0')",
-        "",
-        "  file = ctx.file.target",
-        "",
-        "  for i in range(ctx.attr.chain_length):",
-        "    sym = ctx.actions.declare_file(ctx.label.name + '.sym' + str(i))",
-        "    ctx.actions.symlink(output = sym, target_file = file)",
-        "    file = sym",
+        "  sym = ctx.actions.declare_file(ctx.label.name + '.sym')",
+        "  ctx.actions.symlink(output = sym, target_file = ctx.file.target)",
         "",
         "  out = ctx.actions.declare_file(ctx.label.name + '.out')",
         "  ctx.actions.run_shell(",
@@ -368,7 +356,7 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "    outputs = [out],",
         "    command = '[[ hello == $(cat $1) ]] && touch $2',",
         "    arguments = [sym.path, out.path],",
-        "    execution_requirements = {'no-remote': ''} if ctx.attr.local else {},",
+        "    execution_requirements = {'no-remote': ''},",
         "  )",
         "",
         "  return DefaultInfo(files = depset([out]))",
@@ -377,34 +365,22 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "  implementation = _impl,",
         "  attrs = {",
         "    'target': attr.label(allow_single_file = True),",
-        "    'chain_length': attr.int(),",
-        "    'local': attr.bool(),",
         "  },",
         ")");
 
-    write(
-        "a/BUILD",
-        "load(':defs.bzl', 'my_rule')",
-        "",
-        "my_rule(name = 'one_local', target = 'src.txt', local = True, chain_length = 1)",
-        "my_rule(name = 'two_local', target = 'src.txt', local = True, chain_length = 2)",
-        "my_rule(name = 'one_remote', target = 'src.txt', local = False, chain_length = 1)",
-        "my_rule(name = 'two_remote', target = 'src.txt', local = False, chain_length = 2)");
+    write("a/BUILD", "load(':defs.bzl', 'my_rule')", "my_rule(name = 'my', target = 'src.txt')");
 
     write("a/src.txt", "hello");
 
-    buildTarget("//a:one_local", "//a:two_local", "//a:one_remote", "//a:two_remote");
+    buildTarget("//a:my");
   }
 
   @Test
-  public void symlinkToGeneratedFile() throws Exception {
+  public void localAction_inputSymlinkToGeneratedFile() throws Exception {
     injectFile("hello".getBytes(UTF_8));
     write(
         "a/defs.bzl",
         "def _impl(ctx):",
-        "  if ctx.attr.chain_length < 1:",
-        "    fail('chain_length must be > 0')",
-        "",
         "  file = ctx.actions.declare_file(ctx.label.name + '.file')",
         // Use ctx.actions.run_shell instead of ctx.actions.write, so that it runs remotely.
         "  ctx.actions.run_shell(",
@@ -413,10 +389,8 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "    arguments = [file.path],",
         "  )",
         "",
-        "  for i in range(ctx.attr.chain_length):",
-        "    sym = ctx.actions.declare_file(ctx.label.name + '.sym' + str(i))",
-        "    ctx.actions.symlink(output = sym, target_file = file)",
-        "    file = sym",
+        "  sym = ctx.actions.declare_file(ctx.label.name + '.sym')",
+        "  ctx.actions.symlink(output = sym, target_file = file)",
         "",
         "  out = ctx.actions.declare_file(ctx.label.name + '.out')",
         "  ctx.actions.run_shell(",
@@ -424,40 +398,24 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "    outputs = [out],",
         "    command = '[[ hello == $(cat $1) ]] && touch $2',",
         "    arguments = [sym.path, out.path],",
-        "    execution_requirements = {'no-remote': ''} if ctx.attr.local else {},",
+        "    execution_requirements = {'no-remote': ''},",
         "  )",
         "",
         "  return DefaultInfo(files = depset([out]))",
         "",
-        "my_rule = rule(",
-        "  implementation = _impl,",
-        "  attrs = {",
-        "    'chain_length': attr.int(),",
-        "    'local': attr.bool(),",
-        "  },",
-        ")");
+        "my_rule = rule(_impl)");
 
-    write(
-        "a/BUILD",
-        "load(':defs.bzl', 'my_rule')",
-        "",
-        "my_rule(name = 'one_local', local = True, chain_length = 1)",
-        "my_rule(name = 'two_local', local = True, chain_length = 2)",
-        "my_rule(name = 'one_remote', local = False, chain_length = 1)",
-        "my_rule(name = 'two_remote', local = False, chain_length = 2)");
+    write("a/BUILD", "load(':defs.bzl', 'my_rule')", "my_rule(name = 'my')");
 
-    buildTarget("//a:one_local", "//a:two_local", "//a:one_remote", "//a:two_remote");
+    buildTarget("//a:my");
   }
 
   @Test
-  public void symlinkToDirectory() throws Exception {
+  public void localAction_inputSymlinkToDirectory() throws Exception {
     injectFile("hello".getBytes(UTF_8));
     write(
         "a/defs.bzl",
         "def _impl(ctx):",
-        "  if ctx.attr.chain_length < 1:",
-        "    fail('chain_length must be > 0')",
-        "",
         "  dir = ctx.actions.declare_directory(ctx.label.name + '.dir')",
         "  ctx.actions.run_shell(",
         "    outputs = [dir],",
@@ -465,10 +423,8 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "    arguments = [dir.path],",
         "  )",
         "",
-        "  for i in range(ctx.attr.chain_length):",
-        "    sym = ctx.actions.declare_directory(ctx.label.name + '.sym' + str(i))",
-        "    ctx.actions.symlink(output = sym, target_file = dir)",
-        "    dir = sym",
+        "  sym = ctx.actions.declare_directory(ctx.label.name + '.sym')",
+        "  ctx.actions.symlink(output = sym, target_file = dir)",
         "",
         "  out = ctx.actions.declare_file(ctx.label.name + '.out')",
         "  ctx.actions.run_shell(",
@@ -476,42 +432,26 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "    outputs = [out],",
         "    command = '[[ hello == $(cat $1/some/path/inside.txt) ]] && touch $2',",
         "    arguments = [sym.path, out.path],",
-        "    execution_requirements = {'no-remote': ''} if ctx.attr.local else {},",
+        "    execution_requirements = {'no-remote': ''},",
         "  )",
         "",
         "  return DefaultInfo(files = depset([out]))",
         "",
-        "my_rule = rule(",
-        "  implementation = _impl,",
-        "  attrs = {",
-        "    'chain_length': attr.int(),",
-        "    'local': attr.bool()",
-        "  },",
-        ")");
+        "my_rule = rule(_impl)");
 
-    write(
-        "a/BUILD",
-        "load(':defs.bzl', 'my_rule')",
-        "",
-        "my_rule(name = 'one_local', local = True, chain_length = 1)",
-        "my_rule(name = 'two_local', local = True, chain_length = 2)",
-        "my_rule(name = 'one_remote', local = False, chain_length = 1)",
-        "my_rule(name = 'two_remote', local = False, chain_length = 2)");
+    write("a/BUILD", "load(':defs.bzl', 'my_rule')", "my_rule(name = 'my')");
 
-    buildTarget("//a:one_local", "//a:two_local", "//a:one_remote", "//a:two_remote");
+    buildTarget("//a:my");
   }
 
   @Test
-  public void symlinkToNestedFile() throws Exception {
+  public void localAction_inputSymlinkToNestedFile() throws Exception {
     injectFile("hello".getBytes(UTF_8));
     addOptions("--noincompatible_strict_conflict_checks");
 
     write(
         "a/defs.bzl",
         "def _impl(ctx):",
-        "  if ctx.attr.chain_length < 1:",
-        "    fail('chain_length must be > 0')",
-        "",
         "  dir = ctx.actions.declare_directory(ctx.label.name + '.dir')",
         "  file = ctx.actions.declare_file(ctx.label.name + '.dir/some/path/inside.txt')",
         "  ctx.actions.run_shell(",
@@ -520,10 +460,8 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "    arguments = [dir.path],",
         "  )",
         "",
-        "  for i in range(ctx.attr.chain_length):",
-        "    sym = ctx.actions.declare_file(ctx.label.name + '.sym' + str(i))",
-        "    ctx.actions.symlink(output = sym, target_file = file)",
-        "    file = sym",
+        "  sym = ctx.actions.declare_file(ctx.label.name + '.sym')",
+        "  ctx.actions.symlink(output = sym, target_file = file)",
         "",
         "  out = ctx.actions.declare_file(ctx.label.name + '.out')",
         "  ctx.actions.run_shell(",
@@ -531,42 +469,26 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "    outputs = [out],",
         "    command = '[[ hello == $(cat $1) ]] && touch $2',",
         "    arguments = [sym.path, out.path],",
-        "    execution_requirements = {'no-remote': ''} if ctx.attr.local else {},",
+        "    execution_requirements = {'no-remote': ''},",
         "  )",
         "",
         "  return DefaultInfo(files = depset([out]))",
         "",
-        "my_rule = rule(",
-        "  implementation = _impl,",
-        "  attrs = {",
-        "    'chain_length': attr.int(),",
-        "    'local': attr.bool(),",
-        "  },",
-        ")");
+        "my_rule = rule(_impl)");
 
-    write(
-        "a/BUILD",
-        "load(':defs.bzl', 'my_rule')",
-        "",
-        "my_rule(name = 'one_local', local = True, chain_length = 1)",
-        "my_rule(name = 'two_local', local = True, chain_length = 2)",
-        "my_rule(name = 'one_remote', local = False, chain_length = 1)",
-        "my_rule(name = 'two_remote', local = False, chain_length = 2)");
+    write("a/BUILD", "load(':defs.bzl', 'my_rule')", "my_rule(name = 'my')");
 
-    buildTarget("//a:one_local", "//a:two_local", "//a:one_remote", "//a:two_remote");
+    buildTarget("//a:my");
   }
 
   @Test
-  public void symlinkToNestedDirectory() throws Exception {
+  public void localAction_inputSymlinkToNestedDirectory() throws Exception {
     injectFile("hello".getBytes(UTF_8));
     addOptions("--noincompatible_strict_conflict_checks");
 
     write(
         "a/defs.bzl",
         "def _impl(ctx):",
-        "  if ctx.attr.chain_length < 1:",
-        "    fail('chain_length must be > 0')",
-        "",
         "  dir = ctx.actions.declare_directory(ctx.label.name + '.dir')",
         "  subdir = ctx.actions.declare_directory(ctx.label.name + '.dir/some/path')",
         "  ctx.actions.run_shell(",
@@ -575,10 +497,8 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "    arguments = [dir.path],",
         "  )",
         "",
-        "  for i in range(ctx.attr.chain_length):",
-        "    sym = ctx.actions.declare_directory(ctx.label.name + '.sym' + str(i))",
-        "    ctx.actions.symlink(output = sym, target_file = subdir)",
-        "    subdir = sym",
+        "  sym = ctx.actions.declare_directory(ctx.label.name + '.sym')",
+        "  ctx.actions.symlink(output = sym, target_file = subdir)",
         "",
         "  out = ctx.actions.declare_file(ctx.label.name + '.out')",
         "  ctx.actions.run_shell(",
@@ -586,38 +506,20 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "    outputs = [out],",
         "    command = '[[ hello == $(cat $1/inside.txt) ]] && touch $2',",
         "    arguments = [sym.path, out.path],",
-        "    execution_requirements = {'no-remote': ''} if ctx.attr.local else {},",
+        "    execution_requirements = {'no-remote': ''},",
         "  )",
         "",
         "  return DefaultInfo(files = depset([out]))",
         "",
-        "my_rule = rule(",
-        "  implementation = _impl,",
-        "  attrs = {",
-        "    'chain_length': attr.int(),",
-        "    'local': attr.bool(),",
-        "  },",
-        ")");
+        "my_rule = rule(_impl)");
 
-    write(
-        "a/BUILD",
-        "load(':defs.bzl', 'my_rule')",
-        "",
-        "my_rule(name = 'one_local', local = True, chain_length = 1)",
-        "my_rule(name = 'two_local', local = True, chain_length = 2)",
-        "my_rule(name = 'one_remote', local = False, chain_length = 1)",
-        "my_rule(name = 'two_remote', local = False, chain_length = 2)");
+    write("a/BUILD", "load(':defs.bzl', 'my_rule')", "my_rule(name = 'my')");
 
-    buildTarget("//a:one_local", "//a:two_local", "//a:one_remote", "//a:two_remote");
+    buildTarget("//a:my");
   }
 
   @Test
   public void localAction_stdoutIsReported() throws Exception {
-    // Disable on Windows since it fails for unknown reasons.
-    // TODO(chiwang): Enable it on windows.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
     write(
         "BUILD",
         "genrule(",
@@ -644,11 +546,6 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
 
   @Test
   public void localAction_stderrIsReported() throws Exception {
-    // Disable on Windows since it fails for unknown reasons.
-    // TODO(chiwang): Enable it on windows.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
     write(
         "BUILD",
         "genrule(",
@@ -674,11 +571,6 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
 
   @Test
   public void dynamicExecution_stdoutIsReported() throws Exception {
-    // Disable on Windows since it fails for unknown reasons.
-    // TODO(chiwang): Enable it on windows.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
     addOptions("--internal_spawn_scheduler");
     addOptions("--strategy=Genrule=dynamic");
     addOptions("--experimental_local_execution_delay=9999999");
@@ -708,11 +600,6 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
 
   @Test
   public void dynamicExecution_stderrIsReported() throws Exception {
-    // Disable on Windows since it fails for unknown reasons.
-    // TODO(chiwang): Enable it on windows.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
     addOptions("--internal_spawn_scheduler");
     addOptions("--strategy=Genrule=dynamic");
     addOptions("--experimental_local_execution_delay=9999999");
@@ -930,11 +817,6 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
 
   @Test
   public void downloadToplevel_treeArtifacts() throws Exception {
-    // Disable on Windows since it fails for unknown reasons.
-    // TODO(chiwang): Enable it on windows.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
     setDownloadToplevel();
     writeOutputDirRule();
     write(
@@ -1048,10 +930,7 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
   }
 
   @Test
-  public void downloadToplevel_symlinkFile() throws Exception {
-    // TODO(chiwang): Make metadata for downloaded symlink non-remote.
-    assumeFalse(OS.getCurrent() == OS.WINDOWS);
-
+  public void downloadToplevel_symlinkToGeneratedFile() throws Exception {
     setDownloadToplevel();
     writeSymlinkRule();
     write(
@@ -1065,31 +944,31 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         ")",
         "symlink(",
         "  name = 'foo-link',",
-        "  target = ':foo'",
+        "  target_artifact = ':foo',",
         ")");
 
     buildTarget("//:foo-link");
 
+    assertSymlink("foo-link", getOutputPath("out/foo.txt").asFragment());
     assertValidOutputFile("foo-link", "foo\n");
 
     // Delete link, re-plant symlink
     getOutputPath("foo-link").delete();
-
     buildTarget("//:foo-link");
 
+    assertSymlink("foo-link", getOutputPath("out/foo.txt").asFragment());
     assertValidOutputFile("foo-link", "foo\n");
 
     // Delete target, re-download it
-    getOutputPath("foo").delete();
+    getOutputPath("out/foo.txt").delete();
+    buildTarget("//:foo-link");
 
+    assertSymlink("foo-link", getOutputPath("out/foo.txt").asFragment());
     assertValidOutputFile("foo-link", "foo\n");
   }
 
   @Test
-  public void downloadToplevel_symlinkSourceFile() throws Exception {
-    // TODO(chiwang): Make metadata for downloaded symlink non-remote.
-    assumeFalse(OS.getCurrent() == OS.WINDOWS);
-
+  public void downloadToplevel_symlinkToSourceFile() throws Exception {
     setDownloadToplevel();
     writeSymlinkRule();
     write(
@@ -1097,27 +976,24 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         "load(':symlink.bzl', 'symlink')",
         "symlink(",
         "  name = 'foo-link',",
-        "  target = ':foo.txt'",
+        "  target_artifact = ':foo.txt',",
         ")");
     write("foo.txt", "foo");
 
     buildTarget("//:foo-link");
 
+    assertSymlink("foo-link", getSourcePath("foo.txt").asFragment());
     assertOnlyOutputContent("//:foo-link", "foo-link", "foo" + lineSeparator());
 
     // Delete link, re-plant symlink
     getOutputPath("foo-link").delete();
-
     buildTarget("//:foo-link");
 
     assertOnlyOutputContent("//:foo-link", "foo-link", "foo" + lineSeparator());
   }
 
   @Test
-  public void downloadToplevel_symlinkTree() throws Exception {
-    // TODO(chiwang): Make metadata for downloaded symlink non-remote.
-    assumeFalse(OS.getCurrent() == OS.WINDOWS);
-
+  public void downloadToplevel_symlinkToDirectory() throws Exception {
     setDownloadToplevel();
     writeSymlinkRule();
     writeOutputDirRule();
@@ -1131,20 +1007,21 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
         ")",
         "symlink(",
         "  name = 'foo-link',",
-        "  target = ':foo'",
+        "  target_artifact = ':foo',",
         ")");
 
     buildTarget("//:foo-link");
 
+    assertSymlink("foo-link", getOutputPath("foo").asFragment());
     assertValidOutputFile("foo-link/file-1", "1");
     assertValidOutputFile("foo-link/file-2", "2");
     assertValidOutputFile("foo-link/file-3", "3");
 
-    getOutputPath("foo-link").deleteTree();
-
     // Delete link, re-plant symlink
+    getOutputPath("foo-link").deleteTree();
     buildTarget("//:foo-link");
 
+    assertSymlink("foo-link", getOutputPath("foo").asFragment());
     assertValidOutputFile("foo-link/file-1", "1");
     assertValidOutputFile("foo-link/file-2", "2");
     assertValidOutputFile("foo-link/file-3", "3");
@@ -1154,18 +1031,40 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
 
     buildTarget("//:foo-link");
 
+    assertSymlink("foo-link", getOutputPath("foo").asFragment());
     assertValidOutputFile("foo-link/file-1", "1");
     assertValidOutputFile("foo-link/file-2", "2");
     assertValidOutputFile("foo-link/file-3", "3");
   }
 
   @Test
+  public void downloadToplevel_unresolvedSymlink() throws Exception {
+    // Dangling symlink would require developer mode to be enabled in the CI environment.
+    assumeFalse(OS.getCurrent() == OS.WINDOWS);
+
+    setDownloadToplevel();
+    writeSymlinkRule();
+    write(
+        "BUILD",
+        "load(':symlink.bzl', 'symlink')",
+        "symlink(",
+        "  name = 'foo-link',",
+        "  target_path = '/some/path',",
+        ")");
+
+    buildTarget("//:foo-link");
+
+    assertSymlink("foo-link", PathFragment.create("/some/path"));
+
+    // Delete link, re-plant symlink
+    getOutputPath("foo-link").delete();
+    buildTarget("//:foo-link");
+
+    assertSymlink("foo-link", PathFragment.create("/some/path"));
+  }
+
+  @Test
   public void treeOutputsFromLocalFileSystem_works() throws Exception {
-    // Disable on Windows since it fails for unknown reasons.
-    // TODO(chiwang): Enable it on windows.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
     // Test that tree artifact generated locally can be consumed by other actions.
     // See https://github.com/bazelbuild/bazel/issues/16789
 
@@ -1266,11 +1165,6 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
 
   @Test
   public void incrementalBuild_treeArtifacts_correctlyProducesNewTree() throws Exception {
-    // Disable on Windows since it fails for unknown reasons.
-    // TODO(chiwang): Enable it on windows.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
     writeOutputDirRule();
     write(
         "BUILD",
@@ -1764,11 +1658,12 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
     }
   }
 
+  protected Path getSourcePath(String relativePath) {
+    return getDirectories().getWorkspace().getRelative(relativePath);
+  }
+
   protected Path getOutputPath(String binRelativePath) {
-    return getDirectories()
-        .getWorkspace()
-        .getRelative(getDirectories().getProductName() + "-bin")
-        .getRelative(binRelativePath);
+    return getTargetConfiguration().getBinDir().getRoot().getRelative(binRelativePath);
   }
 
   protected void assertOutputDoesNotExist(String binRelativePath) {
@@ -1792,23 +1687,40 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
     assertThat(output.isExecutable()).isTrue();
   }
 
+  protected void assertSymlink(String binRelativeLinkPath, PathFragment targetPath)
+      throws Exception {
+    // On Windows, symlinks might be implemented as a file copy.
+    if (OS.getCurrent() != OS.WINDOWS) {
+      Path output = getOutputPath(binRelativeLinkPath);
+      assertThat(output.isSymbolicLink()).isTrue();
+      assertThat(output.readSymbolicLink()).isEqualTo(targetPath);
+    }
+  }
+
   protected void writeSymlinkRule() throws IOException {
     write(
         "symlink.bzl",
         "def _symlink_impl(ctx):",
-        "  target = ctx.file.target",
-        "  if target.is_directory:",
-        "    link = ctx.actions.declare_directory(ctx.attr.name)",
+        "  if ctx.file.target_artifact and not ctx.attr.target_path:",
+        "    if ctx.file.target_artifact.is_directory:",
+        "      link = ctx.actions.declare_directory(ctx.attr.name)",
+        "    else:",
+        "      link = ctx.actions.declare_file(ctx.attr.name)",
+        "    ctx.actions.symlink(output = link, target_file = ctx.file.target_artifact)",
+        "  elif ctx.attr.target_path and not ctx.file.target_artifact:",
+        "    link = ctx.actions.declare_symlink(ctx.attr.name)",
+        "    ctx.actions.symlink(output = link, target_path = ctx.attr.target_path)",
         "  else:",
-        "    link = ctx.actions.declare_file(ctx.attr.name)",
-        "  ctx.actions.symlink(output = link, target_file = target)",
+        "    fail('exactly one of target_artifact or target_path must be set')",
+        "",
         "  return DefaultInfo(files = depset([link]))",
         "",
         "symlink = rule(",
         "  implementation = _symlink_impl,",
         "  attrs = {",
-        "    'target': attr.label(mandatory = True, allow_single_file = True),",
-        "  }",
+        "    'target_artifact': attr.label(allow_single_file = True),",
+        "    'target_path': attr.string(),",
+        "  },",
         ")");
   }
 

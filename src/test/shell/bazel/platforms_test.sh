@@ -73,45 +73,12 @@ EOF
     fail "Bazel failed to build @platforms"
 }
 
-function test_incompatible_use_platforms_repo_for_constraints() {
-  # We test that a built-in @platforms repository is buildable.
-  bazel build --incompatible_use_platforms_repo_for_constraints @bazel_tools//platforms:all &> \
-    $TEST_log && fail "Build passed when we expected an error."
-  expect_log "Constraints from @bazel_tools//platforms have been removed."
-}
-
-function test_incompatible_use_platforms_repo_for_constraints_exec() {
-  # We test that a built-in @platforms repository is buildable.
-  cat > BUILD << 'EOF'
-genrule(
-    name = "hello",
-    outs = ["hello.txt"],
-    cmd = "echo 'Hello' > $@",
-    tools = ["tool"],
-)
-
-genrule(
-    name = "tool",
-    outs = ["tool.sh"],
-    cmd = "touch $@",
-    target_compatible_with = select({
-        "@bazel_tools//platforms:linux": [],
-        "//conditions:default": [],
-    })
-)
-EOF
-
-  bazel build //:all &> \
-    $TEST_log && fail "Build passed when we expected an error."
-  expect_log "Constraints from @bazel_tools//platforms have been removed."
-}
-
 function test_platform_accessor() {
   cat > rules.bzl <<'EOF'
 def _impl(ctx):
   platform = ctx.attr.platform[platform_common.PlatformInfo]
-  properties = platform.exec_properties
-  print("The properties are:", properties)
+  label = platform.label
+  print("The label is:", label)
   return []
 
 print_props = rule(
@@ -131,15 +98,11 @@ print_props(
 
 platform(
     name = "my_platform",
-    exec_properties = {
-        "key": "value",
-        "key2": "value2",
-        }
 )
 EOF
 
   bazel build --experimental_platforms_api=true :a &> $TEST_log || fail "Build failed"
-  grep 'The properties are: {"key2": "value2", "key": "value"}' $TEST_log || fail "Did not find expected properties"
+  expect_log 'The label is: @//:my_platform'
 }
 
 run_suite "platform repo test"

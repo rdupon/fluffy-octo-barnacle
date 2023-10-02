@@ -29,6 +29,8 @@ _DYNAMIC_LIBRARY = "dynamic_library"
 
 _IOS_SIMULATOR_TARGET_CPUS = ["ios_x86_64", "ios_i386", "ios_sim_arm64"]
 _IOS_DEVICE_TARGET_CPUS = ["ios_armv6", "ios_arm64", "ios_armv7", "ios_armv7s", "ios_arm64e"]
+_VISIONOS_SIMULATOR_TARGET_CPUS = ["visionos_x86_64", "visionos_sim_arm64"]
+_VISIONOS_DEVICE_TARGET_CPUS = ["visionos_arm64"]
 _WATCHOS_SIMULATOR_TARGET_CPUS = ["watchos_i386", "watchos_x86_64", "watchos_arm64"]
 _WATCHOS_DEVICE_TARGET_CPUS = ["watchos_armv7k", "watchos_arm64_32"]
 _TVOS_SIMULATOR_TARGET_CPUS = ["tvos_x86_64", "tvos_sim_arm64"]
@@ -217,15 +219,7 @@ def _add_transitive_info_providers(ctx, cc_toolchain, cpp_config, feature_config
     output_groups["_validation"] = compilation_context.validation_artifacts
     return (cc_info, instrumented_files_provider, output_groups)
 
-def _collect_runfiles(
-        ctx,
-        feature_configuration,
-        cc_toolchain,
-        libraries,
-        cc_library_linking_outputs,
-        linking_mode,
-        transitive_artifacts,
-        link_compile_output_separately):
+def _collect_runfiles(ctx, feature_configuration, cc_toolchain, libraries, cc_library_linking_outputs, linking_mode, transitive_artifacts, link_compile_output_separately):
     # TODO(b/198254254): Add Legacyexternalrunfiles if necessary.
     runtime_objects_for_coverage = []
     builder_artifacts = []
@@ -500,7 +494,6 @@ def _create_transitive_linking_actions(
         feature_configuration = feature_configuration,
         cc_toolchain = cc_toolchain,
         compilation_outputs = cc_compilation_outputs_with_only_objects,
-        grep_includes = cc_helper.grep_includes_executable(ctx.attr._grep_includes),
         stamp = cc_helper.is_stamping_enabled(ctx),
         additional_inputs = additional_linker_inputs,
         linking_contexts = [cc_linking_context],
@@ -538,16 +531,9 @@ def _collect_linking_context(ctx):
     return cc_common.merge_cc_infos(direct_cc_infos = cc_infos, cc_infos = cc_infos).linking_context
 
 def _get_link_staticness(ctx, cpp_config):
-    linkstatic_attr = None
-    if hasattr(ctx.attr, "_linkstatic_explicitly_set") and not ctx.attr._linkstatic_explicitly_set:
-        # If we know that linkstatic is not explicitly set, use computed default:
-        linkstatic_attr = semantics.get_linkstatic_default(ctx)
-    else:
-        linkstatic_attr = ctx.attr.linkstatic
-
     if cpp_config.dynamic_mode() == "FULLY":
         return linker_mode.LINKING_DYNAMIC
-    elif cpp_config.dynamic_mode() == "OFF" or linkstatic_attr:
+    elif cpp_config.dynamic_mode() == "OFF" or ctx.attr.linkstatic:
         return linker_mode.LINKING_STATIC
     else:
         return linker_mode.LINKING_DYNAMIC
@@ -562,7 +548,7 @@ def _is_link_shared(ctx):
     return hasattr(ctx.attr, "linkshared") and ctx.attr.linkshared
 
 def _is_apple_platform(target_cpu):
-    if target_cpu in _IOS_SIMULATOR_TARGET_CPUS or target_cpu in _IOS_DEVICE_TARGET_CPUS or target_cpu in _WATCHOS_SIMULATOR_TARGET_CPUS or target_cpu in _WATCHOS_DEVICE_TARGET_CPUS or target_cpu in _TVOS_SIMULATOR_TARGET_CPUS or target_cpu in _TVOS_DEVICE_TARGET_CPUS or target_cpu in _CATALYST_TARGET_CPUS or target_cpu in _MACOS_TARGET_CPUS:
+    if target_cpu in _IOS_SIMULATOR_TARGET_CPUS or target_cpu in _IOS_DEVICE_TARGET_CPUS or target_cpu in _VISIONOS_SIMULATOR_TARGET_CPUS or target_cpu in _VISIONOS_DEVICE_TARGET_CPUS or target_cpu in _WATCHOS_SIMULATOR_TARGET_CPUS or target_cpu in _WATCHOS_DEVICE_TARGET_CPUS or target_cpu in _TVOS_SIMULATOR_TARGET_CPUS or target_cpu in _TVOS_DEVICE_TARGET_CPUS or target_cpu in _CATALYST_TARGET_CPUS or target_cpu in _MACOS_TARGET_CPUS:
         return True
     return False
 
@@ -638,6 +624,7 @@ def cc_binary_impl(ctx, additional_linkopts):
 
     additional_make_variable_substitutions = cc_helper.get_toolchain_global_make_variables(cc_toolchain)
     additional_make_variable_substitutions.update(cc_helper.get_cc_flags_make_variable(ctx, feature_configuration, cc_toolchain))
+
     (compilation_context, compilation_outputs) = cc_common.compile(
         name = ctx.label.name,
         actions = ctx.actions,
@@ -653,7 +640,6 @@ def cc_binary_impl(ctx, additional_linkopts):
         copts_filter = cc_helper.copts_filter(ctx, additional_make_variable_substitutions),
         srcs = cc_helper.get_srcs(ctx),
         compilation_contexts = compilation_context_deps,
-        grep_includes = cc_helper.grep_includes_executable(ctx.attr._grep_includes),
         code_coverage_enabled = cc_helper.is_code_coverage_enabled(ctx = ctx),
         hdrs_checking_mode = semantics.determine_headers_checking_mode(ctx),
     )
@@ -689,7 +675,6 @@ def cc_binary_impl(ctx, additional_linkopts):
             cc_toolchain = cc_toolchain,
             compilation_outputs = cc_compilation_outputs,
             name = ctx.label.name,
-            grep_includes = cc_helper.grep_includes_executable(ctx.attr._grep_includes),
             linking_contexts = cc_helper.get_linking_contexts_from_deps(all_deps),
             stamp = cc_helper.is_stamping_enabled(ctx),
             alwayslink = True,
@@ -812,8 +797,6 @@ def cc_binary_impl(ctx, additional_linkopts):
     transitive_artifacts_list = [files_to_build, runtime_libraries_extra]
     if cc_common.is_enabled(feature_configuration = feature_configuration, feature_name = "copy_dynamic_libraries_to_binary"):
         transitive_artifacts_list.append(copied_runtime_dynamic_libraries)
-    if cc_helper.should_create_per_object_debug_info(feature_configuration, cpp_config):
-        transitive_artifacts_list.append(dwo_files)
     transitive_artifacts = depset(transitive = transitive_artifacts_list)
 
     runtime_objects_for_coverage = [binary]
@@ -941,7 +924,6 @@ def make_cc_binary(cc_binary_attrs, **kwargs):
         },
         toolchains = cc_helper.use_cpp_toolchain() +
                      semantics.get_runtimes_toolchain(),
-        incompatible_use_toolchain_transition = True,
         executable = True,
         **kwargs
     )

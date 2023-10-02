@@ -28,6 +28,7 @@ import static org.junit.Assert.fail;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.eventbus.Subscribe;
@@ -146,6 +147,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.logging.Formatter;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
+import java.util.logging.StreamHandler;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 import org.junit.After;
@@ -346,10 +354,12 @@ public abstract class BuildIntegrationTestCase {
   }
 
   protected final void reinitializeAndPreserveOptions() throws Exception {
-    List<String> options = runtimeWrapper.getOptions();
+    ImmutableList<String> options = runtimeWrapper.getOptions();
+    ImmutableMap<String, Object> starlarkOptions = runtimeWrapper.getStarlarkOptions();
     createFilesAndMocks();
     runtimeWrapper.resetOptions();
     runtimeWrapper.addOptions(options);
+    runtimeWrapper.addStarlarkOptions(starlarkOptions);
   }
 
   protected void runPriorToBeforeMethods() throws Exception {
@@ -751,7 +761,7 @@ public abstract class BuildIntegrationTestCase {
     if (result == null) {
       return baseConfiguration;
     }
-    Set<BuildConfigurationValue> topLevelTargetConfigurations =
+    ImmutableSet<BuildConfigurationValue> topLevelTargetConfigurations =
         result.getActualTargets().stream()
             .map(this::getConfiguration)
             .filter(Objects::nonNull)
@@ -1147,5 +1157,36 @@ public abstract class BuildIntegrationTestCase {
           new InfoCommand(),
           new TestCommand());
     }
+  }
+
+  /** Redirect logging output to the given outErr stream at the given log level. */
+  protected void divertLogging(Level level, OutErr outErr, Iterable<Logger> loggers) {
+
+    StreamHandler streamHandler =
+        new StreamHandler(outErr.getErrorStream(), getFormatterForLogging()) {
+          @Override
+          public synchronized void publish(LogRecord record) {
+            super.publish(record);
+            flush();
+          }
+
+          @Override
+          public synchronized void close() {
+            throw new UnsupportedOperationException();
+          }
+        };
+    streamHandler.setLevel(Level.ALL);
+
+    for (Logger logger : loggers) {
+      for (Handler handler : logger.getHandlers()) {
+        logger.removeHandler(handler);
+      }
+      logger.addHandler(streamHandler);
+      logger.setLevel(level);
+    }
+  }
+
+  protected Formatter getFormatterForLogging() {
+    return new SimpleFormatter();
   }
 }

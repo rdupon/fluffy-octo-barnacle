@@ -53,7 +53,6 @@ import javax.annotation.Nullable;
 import net.starlark.java.annot.StarlarkBuiltin;
 import net.starlark.java.eval.Dict;
 import net.starlark.java.eval.EvalException;
-import net.starlark.java.eval.Module;
 import net.starlark.java.eval.Printer;
 import net.starlark.java.eval.Sequence;
 import net.starlark.java.eval.Starlark;
@@ -110,10 +109,11 @@ public class StarlarkRepositoryModule implements RepositoryModuleApi {
       }
     }
     builder.setConfiguredTargetFunction(implementation);
-    BazelModuleContext bzlModule =
-        BazelModuleContext.of(Module.ofInnermostEnclosingStarlarkFunction(thread));
+    // TODO(b/291752414): If we care about the digest of repository rules, we should be using the
+    // transitive bzl digest of the module of the outermost stack frame, not the innermost.
+    BazelModuleContext moduleContext = BazelModuleContext.ofInnermostBzlOrThrow(thread);
     builder.setRuleDefinitionEnvironmentLabelAndDigest(
-        bzlModule.label(), bzlModule.bzlTransitiveDigest());
+        moduleContext.label(), moduleContext.bzlTransitiveDigest());
     builder.setWorkspaceOnly();
     return new RepositoryRuleFunction(
         builder,
@@ -294,6 +294,8 @@ public class StarlarkRepositoryModule implements RepositoryModuleApi {
       Dict<?, ?> tagClasses, // Dict<String, TagClass>
       Object doc, // <String> or Starlark.NONE
       Sequence<?> environ, // <String>
+      boolean osDependent,
+      boolean archDependent,
       StarlarkThread thread)
       throws EvalException {
     return ModuleExtension.builder()
@@ -302,9 +304,11 @@ public class StarlarkRepositoryModule implements RepositoryModuleApi {
             ImmutableMap.copyOf(Dict.cast(tagClasses, String.class, TagClass.class, "tag_classes")))
         .setDoc(Starlark.toJavaOptional(doc, String.class).map(Starlark::trimDocString))
         .setDefiningBzlFileLabel(
-            BzlInitThreadContext.fromOrFailFunction(thread, "module_extension").getBzlFile())
+            BzlInitThreadContext.fromOrFail(thread, "module_extension()").getBzlFile())
         .setEnvVariables(ImmutableList.copyOf(Sequence.cast(environ, String.class, "environ")))
         .setLocation(thread.getCallerLocation())
+        .setOsDependent(osDependent)
+        .setArchDependent(archDependent)
         .build();
   }
 

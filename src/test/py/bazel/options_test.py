@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+from absl.testing import absltest
 from src.test.py.bazel import test_base
 
 
@@ -269,6 +268,20 @@ class OptionsTest(test_base.TestBase):
         stderr,
     )
 
+  def testCommonPseudoCommand_allowResidueFalseCommandIgnoresStarlarkOptions(
+      self,
+  ):
+    self.ScratchFile("WORKSPACE.bazel")
+    self.ScratchFile(
+        ".bazelrc",
+        [
+            "common --@foo//bar:flag",
+        ],
+    )
+
+    # Check that version doesn't fail.
+    self.RunBazel(["version"])
+
 
 if __name__ == "__main__":
-  unittest.main()
+  absltest.main()

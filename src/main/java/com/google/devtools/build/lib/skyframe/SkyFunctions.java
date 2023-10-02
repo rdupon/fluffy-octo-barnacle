@@ -57,12 +57,9 @@ public final class SkyFunctions {
       SkyFunctionName.createNonHermetic("PREPARE_DEPS_OF_PATTERN");
   public static final SkyFunctionName PREPARE_DEPS_OF_TARGETS_UNDER_DIRECTORY =
       SkyFunctionName.createHermetic("PREPARE_DEPS_OF_TARGETS_UNDER_DIRECTORY");
-  public static final SkyFunctionName PREPARE_TEST_SUITES_UNDER_DIRECTORY =
-      SkyFunctionName.createHermetic("PREPARE_TEST_SUITES_UNDER_DIRECTORY");
   public static final SkyFunctionName COLLECT_TARGETS_IN_PACKAGE =
       SkyFunctionName.createHermetic("COLLECT_TARGETS_IN_PACKAGE");
-  public static final SkyFunctionName COLLECT_TEST_SUITES_IN_PACKAGE =
-      SkyFunctionName.createHermetic("COLLECT_TEST_SUITES_IN_PACKAGE");
+
   public static final SkyFunctionName COLLECT_PACKAGES_UNDER_DIRECTORY =
       SkyFunctionName.createHermetic("COLLECT_PACKAGES_UNDER_DIRECTORY");
   public static final SkyFunctionName IGNORED_PACKAGE_PREFIXES =
@@ -71,7 +68,7 @@ public final class SkyFunctions {
       SkyFunctionName.createHermetic("TEST_SUITE_EXPANSION");
   static final SkyFunctionName TESTS_IN_SUITE = SkyFunctionName.createHermetic("TESTS_IN_SUITE");
   // Non-hermetic because accesses package locator
-  static final SkyFunctionName TARGET_PATTERN_PHASE =
+  public static final SkyFunctionName TARGET_PATTERN_PHASE =
       SkyFunctionName.createNonHermetic("TARGET_PATTERN_PHASE");
   static final SkyFunctionName PREPARE_ANALYSIS_PHASE =
       SkyFunctionName.createNonHermetic("PREPARE_ANALYSIS_PHASE");
@@ -137,8 +134,6 @@ public final class SkyFunctions {
       SkyFunctionName.createHermetic("REPOSITORY_MAPPING");
   public static final SkyFunctionName RESOLVED_FILE =
       SkyFunctionName.createHermetic("RESOLVED_FILE");
-  public static final SkyFunctionName RESOLVED_HASH_VALUES =
-      SkyFunctionName.createHermetic("RESOLVED_HASH_VALUES");
   public static final SkyFunctionName MODULE_FILE =
       SkyFunctionName.createNonHermetic("MODULE_FILE");
   public static final SkyFunctionName REPO_FILE = SkyFunctionName.createHermetic("REPO_FILE");
@@ -158,6 +153,9 @@ public final class SkyFunctions {
       SkyFunctionName.createHermetic("BAZEL_DEP_GRAPH");
   public static final SkyFunctionName BAZEL_LOCK_FILE =
       SkyFunctionName.createHermetic("BAZEL_LOCK_FILE");
+  public static final SkyFunctionName BAZEL_FETCH_ALL =
+      SkyFunctionName.createHermetic("BAZEL_FETCH_ALL");
+  public static final SkyFunctionName REPO_SPEC = SkyFunctionName.createNonHermetic("REPO_SPEC");
 
   public static Predicate<SkyKey> isSkyFunction(SkyFunctionName functionName) {
     return key -> key.functionName().equals(functionName);

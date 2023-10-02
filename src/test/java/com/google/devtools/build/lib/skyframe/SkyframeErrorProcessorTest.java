@@ -49,10 +49,11 @@ public class SkyframeErrorProcessorTest {
         ConfiguredTargetKey.builder()
             .setLabel(Label.parseCanonicalUnchecked("//analysis_err"))
             .build();
+    TargetAndConfiguration mockTargetAndConfiguration =
+        new TargetAndConfiguration(mock(Target.class), /* configuration= */ null);
     ConfiguredValueCreationException analysisException =
         new ConfiguredValueCreationException(
-            new TargetAndConfiguration(mock(Target.class), /* configuration= */ null),
-            "analysis exception");
+            mockTargetAndConfiguration.getTarget(), "analysis exception");
     ErrorInfo analysisErrorInfo =
         ErrorInfo.fromException(
             new ReifiedSkyFunctionException(
@@ -68,11 +69,12 @@ public class SkyframeErrorProcessorTest {
             () ->
                 SkyframeErrorProcessor.processErrors(
                     result,
-                    /*cyclesReporter=*/ new CyclesReporter(),
-                    /*eventHandler=*/ mock(ExtendedEventHandler.class),
-                    /*keepGoing=*/ false,
-                    /*eventBus=*/ null,
-                    /*bugReporter=*/ null,
+                    /* cyclesReporter= */ new CyclesReporter(),
+                    /* eventHandler= */ mock(ExtendedEventHandler.class),
+                    /* keepGoing= */ false,
+                    /* keepEdges= */ true,
+                    /* eventBus= */ null,
+                    /* bugReporter= */ null,
                     includeExecutionPhase));
     assertThat(thrown).hasCauseThat().isEqualTo(analysisException);
   }

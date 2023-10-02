@@ -16,7 +16,6 @@ package com.google.devtools.build.lib.remote;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
 
-import build.bazel.remote.execution.v2.CacheCapabilities;
 import build.bazel.remote.execution.v2.Digest;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
@@ -24,6 +23,7 @@ import com.google.common.eventbus.EventBus;
 import com.google.common.hash.HashCode;
 import com.google.devtools.build.lib.actions.ActionInput;
 import com.google.devtools.build.lib.actions.ActionInputPrefetcher.Priority;
+import com.google.devtools.build.lib.actions.ActionOutputDirectoryHelper;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.actions.FileArtifactValue;
 import com.google.devtools.build.lib.actions.cache.VirtualActionInput;
@@ -79,6 +79,7 @@ public class RemoteActionInputFetcherTest extends ActionInputPrefetcherTestBase 
         execRoot,
         tempPathGenerator,
         DUMMY_REMOTE_OUTPUT_CHECKER,
+        ActionOutputDirectoryHelper.createForTesting(),
         OutputPermissions.READONLY);
   }
 
@@ -95,6 +96,7 @@ public class RemoteActionInputFetcherTest extends ActionInputPrefetcherTestBase 
             execRoot,
             tempPathGenerator,
             DUMMY_REMOTE_OUTPUT_CHECKER,
+            ActionOutputDirectoryHelper.createForTesting(),
             OutputPermissions.READONLY);
     VirtualActionInput a = ActionsTestUtil.createVirtualActionInput("file1", "hello world");
 
@@ -124,6 +126,7 @@ public class RemoteActionInputFetcherTest extends ActionInputPrefetcherTestBase 
             execRoot,
             tempPathGenerator,
             DUMMY_REMOTE_OUTPUT_CHECKER,
+            ActionOutputDirectoryHelper.createForTesting(),
             OutputPermissions.READONLY);
 
     // act
@@ -170,10 +173,6 @@ public class RemoteActionInputFetcherTest extends ActionInputPrefetcherTestBase 
           DigestUtil.buildDigest(entry.getKey().asBytes(), entry.getValue().length),
           entry.getValue());
     }
-    return new RemoteCache(
-        CacheCapabilities.getDefaultInstance(),
-        new InMemoryCacheClient(cacheEntries),
-        options,
-        digestUtil);
+    return new RemoteCache(new InMemoryCacheClient(cacheEntries), options, digestUtil);
   }
 }

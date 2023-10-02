@@ -1843,7 +1843,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
         "foo/extension.bzl",
         "result = provider()",
         "def _impl(ctx):",
-        "  return [result(property = ctx.attr.dep[JavaInfo].transitive_deps)]",
+        "  return [result(property = ctx.attr.dep[JavaInfo].transitive_compile_time_jars)]",
         "my_rule = rule(_impl, attrs = { 'dep' : attr.label() })");
 
     scratch.file(
@@ -1875,7 +1875,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
         "foo/extension.bzl",
         "result = provider()",
         "def _impl(ctx):",
-        "  return [result(property = ctx.attr.dep[JavaInfo].transitive_runtime_deps)]",
+        "  return [result(property = ctx.attr.dep[JavaInfo].transitive_runtime_jars)]",
         "my_rule = rule(_impl, attrs = { 'dep' : attr.label() })");
 
     scratch.file(
@@ -2166,7 +2166,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
     scratch.file(
         "foo/BUILD",
         "load(':extension.bzl', 'my_rule')",
-        "java_library(name = 'my_java_lib_a', srcs = ['java/A.java'])",
+        "java_library(name = 'my_java_lib_a', srcs = ['java/A.java'], javacopts = ['opt1'])",
         "my_rule(name = 'my_starlark_rule', dep = ':my_java_lib_a')");
     assertNoEvents();
     ConfiguredTarget myRuleTarget = getConfiguredTarget("//foo:my_starlark_rule");
@@ -2182,6 +2182,35 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
             prettyArtifactNames(
                 javaCompilationInfoProvider.getRuntimeClasspath().getSet(Artifact.class)))
         .containsExactly("foo/libmy_java_lib_a.jar");
+    assertThat(javaCompilationInfoProvider.getJavacOpts()).contains("opt1");
+    assertThat(javaCompilationInfoProvider.getJavacOptsList()).contains("opt1");
+  }
+
+  @Test
+  public void javaInfoStarlarkCompilationInfoJavacOpts() throws Exception {
+    scratch.file(
+        "foo/extension.bzl",
+        "result = provider()",
+        "def _impl(ctx):",
+        "  return [result(property = ctx.attr.dep[JavaInfo].compilation_info.javac_options_list)]",
+        "my_rule = rule(_impl, attrs = { 'dep' : attr.label() })");
+    scratch.file(
+        "foo/BUILD",
+        "load(':extension.bzl', 'my_rule')",
+        "java_library(name = 'my_java_lib_a', srcs = ['java/A.java'], javacopts = ['opt1',"
+            + " 'opt2'])",
+        "my_rule(name = 'my_starlark_rule', dep = ':my_java_lib_a')");
+    assertNoEvents();
+    ConfiguredTarget myRuleTarget = getConfiguredTarget("//foo:my_starlark_rule");
+
+    StructImpl info =
+        (StructImpl)
+            myRuleTarget.get(
+                new StarlarkProvider.Key(Label.parseCanonical("//foo:extension.bzl"), "result"));
+    Sequence<String> javacOptionsList =
+        Sequence.cast(info.getValue("property"), String.class, "javac_options_list");
+
+    assertThat(javacOptionsList).containsAtLeast("opt1", "opt2").inOrder();
   }
 
   /* Test inspired by {@link AbstractJavaLibraryConfiguredTargetTest#testNeverlink}.*/
@@ -2954,6 +2983,33 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
   }
 
   @Test
+  public void defaultJavacOpts_asDepset() throws Exception {
+    JavaToolchainTestUtil.writeBuildFileForJavaToolchain(scratch);
+    scratch.file(
+        "a/rule.bzl",
+        "load('//myinfo:myinfo.bzl', 'MyInfo')",
+        "def _impl(ctx):",
+        "  return MyInfo(",
+        "    javac_opts = java_common.default_javac_opts_depset(",
+        "        java_toolchain = ctx.attr._java_toolchain[java_common.JavaToolchainInfo],",
+        "    ))",
+        "get_javac_opts = rule(",
+        "  _impl,",
+        "  attrs = {",
+        "    '_java_toolchain': attr.label(default = Label('//java/com/google/test:toolchain')),",
+        "  }",
+        ");");
+
+    scratch.file("a/BUILD", "load(':rule.bzl', 'get_javac_opts')", "get_javac_opts(name='r')");
+
+    ConfiguredTarget r = getConfiguredTarget("//a:r");
+    NestedSet<String> javacopts =
+        Depset.cast(getMyInfoFromTarget(r).getValue("javac_opts"), String.class, "javac_opts");
+
+    assertThat(String.join(" ", javacopts.toList())).contains("-source 6 -target 6");
+  }
+
+  @Test
   public void defaultJavacOpts_toolchainProvider() throws Exception {
     JavaToolchainTestUtil.writeBuildFileForJavaToolchain(scratch);
     scratch.file(
@@ -3373,7 +3429,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
 
     getConfiguredTarget("//foo:custom");
 
-    assertContainsEvent("Rule in 'foo' cannot use private API");
+    assertContainsEvent("file '//foo:custom_rule.bzl' cannot use private API");
   }
 
   @Test
@@ -3393,7 +3449,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
 
     getConfiguredTarget("//foo:myrule");
 
-    assertContainsEvent("Rule in 'foo' cannot use private API");
+    assertContainsEvent("file '//foo:rule.bzl' cannot use private API");
   }
 
   @Test
@@ -3540,7 +3596,8 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
 
     getConfiguredTarget("//foo:custom");
 
-    assertContainsEvent("Error in " + api + ": Rule in 'foo' cannot use private API");
+    assertContainsEvent(
+        "Error in " + api + ": file '//foo:custom_rule.bzl' cannot use private API");
   }
 
   @Test
@@ -3556,6 +3613,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
     "{api: _check_java_toolchain_is_declared_on_rule}",
     "{api: _incompatible_depset_for_java_output_source_jars}",
     "{api: wrap_java_info}",
+    "{api: intern_javac_opts}",
   })
   public void testJavaCommonPrivateApis_areNotVisibleToPublicStarlark(String api) throws Exception {
     // validate that this api is present on the module, so this test fails when the API is deleted

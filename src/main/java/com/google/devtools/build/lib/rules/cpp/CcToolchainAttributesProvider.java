@@ -24,6 +24,7 @@ import com.google.devtools.build.lib.analysis.FileProvider;
 import com.google.devtools.build.lib.analysis.LicensesProvider;
 import com.google.devtools.build.lib.analysis.LicensesProvider.TargetLicense;
 import com.google.devtools.build.lib.analysis.LicensesProviderImpl;
+import com.google.devtools.build.lib.analysis.OutputGroupInfo;
 import com.google.devtools.build.lib.analysis.PackageSpecificationProvider;
 import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.TransitiveInfoCollection;
@@ -73,8 +74,6 @@ public class CcToolchainAttributesProvider extends NativeInfo implements HasCcTo
   private final NestedSet<Artifact> fullInputsForCrosstool;
   private final NestedSet<Artifact> fullInputsForLink;
   private final NestedSet<Artifact> coverage;
-  private final String compiler;
-  private final String cpu;
   private final Artifact ifsoBuilder;
   private final Artifact linkDynamicLibraryTool;
   @Nullable private final Artifact grepIncludes;
@@ -105,6 +104,7 @@ public class CcToolchainAttributesProvider extends NativeInfo implements HasCcTo
   private final StarlarkFunction ccToolchainBuildVariablesFunc;
   private final String lateBoundLibc;
   private final String lateBoundTargetLibc;
+  private final OutputGroupInfo ccBuildInfoTranslator;
 
   public CcToolchainAttributesProvider(
       RuleContext ruleContext,
@@ -113,21 +113,12 @@ public class CcToolchainAttributesProvider extends NativeInfo implements HasCcTo
     super();
     this.ccToolchainLabel = ruleContext.getLabel();
     this.toolchainIdentifier = ruleContext.attributes().get("toolchain_identifier", Type.STRING);
-    if (ruleContext.getFragment(CppConfiguration.class).removeCpuCompilerCcToolchainAttributes()
-        && (ruleContext.attributes().isAttributeValueExplicitlySpecified("cpu")
-            || ruleContext.attributes().isAttributeValueExplicitlySpecified("compiler"))) {
-      ruleContext.ruleError(
-          "attributes 'cpu' and 'compiler' have been deprecated, please remove them. See "
-              + "https://github.com/bazelbuild/bazel/issues/7075 for details.");
-    }
 
     // grep_includes is not supported by Bazel.
     String toolsRepository = ruleContext.getRuleClassProvider().getToolsRepository().getName();
     this.grepIncludes =
         toolsRepository.isEmpty() ? ruleContext.getPrerequisiteArtifact("$grep_includes") : null;
 
-    this.cpu = ruleContext.attributes().get("cpu", Type.STRING);
-    this.compiler = ruleContext.attributes().get("compiler", Type.STRING);
     this.supportsParamFiles = ruleContext.attributes().get("supports_param_files", BOOLEAN);
     this.supportsHeaderParsing = ruleContext.attributes().get("supports_header_parsing", BOOLEAN);
     this.allFiles = getFiles(ruleContext, "all_files");
@@ -215,21 +206,23 @@ public class CcToolchainAttributesProvider extends NativeInfo implements HasCcTo
       this.licensesProvider = null;
     }
     // TODO(b/65835260): Remove this conditional once j2objc can learn the toolchain type.
-    if (ruleContext.attributes().has(CcToolchain.CC_TOOLCHAIN_TYPE_ATTRIBUTE_NAME)) {
+    if (ruleContext.attributes().has(CcToolchainRule.CC_TOOLCHAIN_TYPE_ATTRIBUTE_NAME)) {
       this.toolchainType =
           ruleContext
               .attributes()
-              .get(CcToolchain.CC_TOOLCHAIN_TYPE_ATTRIBUTE_NAME, BuildType.LABEL);
+              .get(CcToolchainRule.CC_TOOLCHAIN_TYPE_ATTRIBUTE_NAME, BuildType.LABEL);
     } else {
       this.toolchainType = null;
     }
     this.allowlistForLayeringCheck =
         Allowlist.fetchPackageSpecificationProvider(
-            ruleContext, CcToolchain.ALLOWED_LAYERING_CHECK_FEATURES_ALLOWLIST);
+            ruleContext, CcToolchainRule.ALLOWED_LAYERING_CHECK_FEATURES_ALLOWLIST);
     this.allowlistForLooseHeaderCheck =
         Allowlist.fetchPackageSpecificationProvider(
-            ruleContext, CcToolchain.LOOSE_HEADER_CHECK_ALLOWLIST);
+            ruleContext, CcToolchainRule.LOOSE_HEADER_CHECK_ALLOWLIST);
     this.ccToolchainBuildVariablesFunc = ccToolchainBuildVariablesFunc;
+    this.ccBuildInfoTranslator =
+        OutputGroupInfo.get(ruleContext.getPrerequisite("$build_info_translator"));
   }
 
   // This is to avoid Starlark limitation of not being able to have complex logic in configuration
@@ -259,10 +252,6 @@ public class CcToolchainAttributesProvider extends NativeInfo implements HasCcTo
   public StarlarkFunction getBuildVarsFunc(StarlarkThread thread) throws EvalException {
     CcModule.checkPrivateStarlarkificationAllowlist(thread);
     return ccToolchainBuildVariablesFunc;
-  }
-
-  public String getCpu() {
-    return cpu;
   }
 
   public boolean isSupportsParamFiles() {
@@ -558,10 +547,6 @@ public class CcToolchainAttributesProvider extends NativeInfo implements HasCcTo
     return getTargetLibcTop() == null ? null : getTargetLibcTop().getLabel();
   }
 
-  public String getCompiler() {
-    return compiler;
-  }
-
   public Artifact getIfsoBuilder() {
     return ifsoBuilder;
   }
@@ -572,6 +557,10 @@ public class CcToolchainAttributesProvider extends NativeInfo implements HasCcTo
 
   public PackageSpecificationProvider getAllowlistForLooseHeaderCheck() {
     return allowlistForLooseHeaderCheck;
+  }
+
+  public OutputGroupInfo getCcBuildInfoTranslator() {
+    return ccBuildInfoTranslator;
   }
 
   private static NestedSet<Artifact> getFiles(RuleContext context, String attribute) {

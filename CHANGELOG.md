@@ -1,3 +1,173 @@
+## Release 7.0.0-pre.20230917.3 (2023-09-22)
+
+```
+Baseline: 1cf392ff3918386858b8c038f82c013b1e04be98
+
+Cherry picks:
+
+   + 32563ca1728a69437b26efa19d18eebfcecc4765:
+     [Skymeld] Avoid printing extra WARNINGS for execution failures
+     in -k.
+   + 19f5e933d3fc91848b2b786cb11a6decaa96cf6e:
+     Automated rollback of commit
+     f06418470988721c8c3efe38723f910989180ad4.
+```
+
+Incompatible changes:
+
+  - `cmd_helper` module was removed
+  - `ctx.new_file` was removed, `ctx.actions.declare_file` is to be
+    used instead.
+  - Fails on unknown attributes (even when set to None). See
+    https://github.com/bazelbuild/bazel/issues/19403
+  - Flip incompatible_enable_cc_toolchain_resolution
+    (https://github.com/bazelbuild/bazel/issues/7260)
+
+Important changes:
+
+  - Change output paths to consistently start with
+    [cpu]-[compilation_mode] along with other cleanups to output path
+    generation logic.
+  - Compilation actions using the auto-configured MSVC toolchain are
+    forced to emit error messages in English if the English language
+    pack for Visual Studio is installed.
+
+This release contains contributions from many people at Google, as well as Benjamin Peterson, Boleyn Su, Brentley Jones, Daniel Wagner-Hall, Fabian Meumertzheim, Keith Smiley, Roman Salvador, Timothy Gu.
+
+## Release 7.0.0-pre.20230906.2 (2023-09-14)
+
+```
+Baseline: 08070932379cd3dafaefe5b546c84ad26cd72951
+
+Cherry picks:
+
+   + 4fb701adb5cdf4a87d7457bfe75b76338a8d351a:
+     fix forward for
+     https://github.com/bazelbuild/bazel/commit/ceddfb1ece1f8ed7ff8155
+     8fa1751e6526df031b. Make sure the use the appropriate check for
+     alias + feature flag so trimming does not get applied
+```
+
+Incompatible changes:
+
+  - --incompatible_merge_fixed_and_default_shell_env is flipped to
+    true. See #19317 for details.
+  - Fails on unknown attributes (even when set to None)
+
+Important changes:
+
+  - Set Android Databinding to v2 and Databinging AndroidX to true
+    and remove support for Databinding V1.
+  - Added whether or not a FileWrite action's output is executable to
+    the aquery results
+  - --use_single_jar_apk_builder is removed. It's been a no-op for
+    years.
+  - JVM options in environment variables JAVA_TOOL_OPTIONS and
+    JDK_JAVA_OPTIONS now do not get to the server; use
+    --host_jvm_args instead.
+  - --remote_download_minimal no longer implies
+    --nobuild_runfile_links.
+  - attr objects in Starlark now use value equality rather than
+    reference
+    equality.
+
+This release contains contributions from many people at Google, as well as Benjamin Lee, Benjamin Peterson, Ed Schouten, Fabian Meumertzheim, Keith Smiley, Letu Ren, Mauricio Galindo, Mauricio G, Orion Hodson, Shaygan Hooshyari.
+
+## Release 7.0.0-pre.20230823.4 (2023-08-30)
+
+```
+Baseline: d55c11b658255a4574e0b3eb50d76dd6123866e6
+
+Cherry picks:
+
+   + 34c5ef22e88eba60238ad3735b74ea71db1c993e:
+     make sure IdempotencyChecker use the correct rule transition and
+     remove redundant computeTransition calls.
+   + 32d018ea402a5acbb574b7f4bf600b3cc040778c:
+     Make targets in analysis completed events visible.
+```
+
+Incompatible changes:
+
+  - The --apple_compiler command line option is not available anymore.
+  - py_transitions top-level was removed.
+
+Important changes:
+
+  - Android resources will no longer propagate through neverlinked
+    libraries by default.
+
+This release contains contributions from many people at Google, as well as Alex Eagle, arun.sampathkumar, Benjamin Lee, Fabian Meumertzheim, Gunnar Wagenknecht, Julio Merino, Keith Smiley, Nicholas Junge.
+
+## Release 7.0.0-pre.20230816.3 (2023-08-25)
+
+```
+Baseline: 27aaccccb674090493d52d3340b7df69f5ed43f8
+
+Cherry picks:
+
+   + baace69c0c7cb2fe927214dae78c43bd10865c43:
+     Automated rollback of commit
+     37268de708224bba900036b8b3fe9e123d2eae6d.
+```
+
+Incompatible changes:
+
+  - The --android_include_proguard_location_references flag is not
+    supported anymore.
+  - The --apple_compiler command line option is not available anymore.
+  - --no_proguard_location_reference is now added unconditionally to
+    the command line of aapt2.
+  - The command line flag --apple_enable_auto_dsym_dbg is not
+    supported anymore.
+
+Important changes:
+
+  - `rule()` and `attr.*` can no longer be (pointlessly) called
+    during WORKSPACE evaluation and repository rule evaluation.
+  - Expands baseline profile wildcards before optimizer tools see
+    them.
+
+This release contains contributions from many people at Google, as well as Chirag Ramani, Fabian Meumertzheim, Keith Smiley, nglevin, Tyler Williams.
+
+## Release 7.0.0-pre.20230810.1 (2023-08-22)
+
+```
+Baseline: c279c7b2f125fcb5a7e67595c0044c32fe944aa9
+
+Cherry picks:
+
+   + 4d157ee3530762c9392ccc08a0073103293a6391:
+     Cherry-pick required commits into 7.0.0-pre.20230810.1rc1
+     (#19298)
+```
+
+Initial release.
+
+## Release 6.3.2 (2023-08-08)
+
+```
+Baseline:  283ed362e6ccceb047553c2517a0331afd02db90
+
+Release Notes:
+
++ Ensure that extension unique names followed by `~` are prefix-free (#19167)
++ Lockfile updates & fixes (#19153) (#19175)
++ Empty commit to try to fix CI issue (#19177)
+
+Acknowledgements:
+
+This release contains contributions from many people at Google, as well as bazel.build machine account, Fabian Meumertzheim.
+```
+
+## Release 7.0.0-pre.20230724.1 (2023-08-07)
+
+```
+Baseline: f6344ffcacdea6c4a61e112d0f60beda8068eac5
+```
+
+Initial release.
+
 ## Release 6.3.1 (2023-07-31)
 
 ```

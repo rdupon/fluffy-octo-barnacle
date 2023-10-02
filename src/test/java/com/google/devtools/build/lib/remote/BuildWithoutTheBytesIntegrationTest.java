@@ -37,6 +37,7 @@ import com.google.devtools.build.lib.standalone.StandaloneModule;
 import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
+import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.lib.vfs.Symlinks;
 import java.io.IOException;
 import org.junit.After;
@@ -142,10 +143,6 @@ public class BuildWithoutTheBytesIntegrationTest extends BuildWithoutTheBytesInt
   @Test
   public void intermediateOutputsAreInputForInternalActions_prefetchIntermediateOutputs()
       throws Exception {
-    // Disable on Windows since it seems that template is not supported there.
-    if (OS.getCurrent() == OS.WINDOWS) {
-      return;
-    }
     // Test that a remotely stored output that's an input to a internal action
     // (ctx.actions.expand_template) is staged lazily for action execution.
     write(
@@ -215,7 +212,7 @@ public class BuildWithoutTheBytesIntegrationTest extends BuildWithoutTheBytesInt
         ")");
     // Download all outputs with regex so in the next build with ALL mode, the actions are not
     // invalidated because of missing outputs.
-    addOptions("--experimental_remote_download_regex=.*");
+    addOptions("--remote_download_regex=.*");
     ActionEventCollector actionEventCollector = new ActionEventCollector();
     runtimeWrapper.registerSubscriber(actionEventCollector);
     buildTarget("//a:foobar");
@@ -237,8 +234,9 @@ public class BuildWithoutTheBytesIntegrationTest extends BuildWithoutTheBytesInt
 
   @Test
   public void outputSymlinkHandledGracefully() throws Exception {
-    // Symlinks may not be supported on Windows
+    // Dangling symlink would require developer mode to be enabled in the CI environment.
     assumeFalse(OS.getCurrent() == OS.WINDOWS);
+
     write(
         "a/defs.bzl",
         "def _impl(ctx):",
@@ -539,5 +537,143 @@ public class BuildWithoutTheBytesIntegrationTest extends BuildWithoutTheBytesInt
     thread.join();
     // We should be able to observe more than 1 mtime if the server extends the lease.
     assertThat(mtimes.size()).isGreaterThan(1);
+  }
+
+  @Test
+  public void downloadTopLevel_deepSymlinkToFile() throws Exception {
+    setDownloadToplevel();
+    write(
+        "defs.bzl",
+        "def _impl(ctx):",
+        "  file = ctx.actions.declare_file(ctx.label.name + '.file')",
+        "  ctx.actions.run_shell(",
+        "    outputs = [file],",
+        "    command = 'echo -n hello > $1',",
+        "    arguments = [file.path],",
+        "  )",
+        "",
+        "  shallow = ctx.actions.declare_file(ctx.label.name + '.shallow')",
+        "  ctx.actions.symlink(output = shallow, target_file = file)",
+        "",
+        "  deep = ctx.actions.declare_file(ctx.label.name + '.deep')",
+        "  ctx.actions.symlink(output = deep, target_file = shallow)",
+        "",
+        "  return DefaultInfo(files = depset([deep]))",
+        "",
+        "symlink = rule(_impl)");
+    write("BUILD", "load(':defs.bzl', 'symlink')", "symlink(name = 'foo')");
+
+    buildTarget("//:foo");
+
+    // Materialization skips the intermediate symlink.
+    assertSymlink("foo.deep", getOutputPath("foo.file").asFragment());
+    assertValidOutputFile("foo.deep", "hello");
+  }
+
+  @Test
+  public void downloadTopLevel_deepSymlinkToDirectory() throws Exception {
+    setDownloadToplevel();
+    write(
+        "defs.bzl",
+        "def _impl(ctx):",
+        "  dir = ctx.actions.declare_directory(ctx.label.name + '.dir')",
+        "  ctx.actions.run_shell(",
+        "    outputs = [dir],",
+        "    command = 'echo -n hello > $1/file.txt',",
+        "    arguments = [dir.path],",
+        "  )",
+        "",
+        "  shallow = ctx.actions.declare_directory(ctx.label.name + '.shallow')",
+        "  ctx.actions.symlink(output = shallow, target_file = dir)",
+        "",
+        "  deep = ctx.actions.declare_directory(ctx.label.name + '.deep')",
+        "  ctx.actions.symlink(output = deep, target_file = shallow)",
+        "",
+        "  return DefaultInfo(files = depset([deep]))",
+        "",
+        "symlink = rule(_impl)");
+    write("BUILD", "load(':defs.bzl', 'symlink')", "symlink(name = 'foo')");
+
+    buildTarget("//:foo");
+
+    // Materialization skips the intermediate symlink.
+    assertSymlink("foo.deep", getOutputPath("foo.dir").asFragment());
+    assertValidOutputFile("foo.deep/file.txt", "hello");
+  }
+
+  @Test
+  public void downloadTopLevel_genruleSymlinkToInput() throws Exception {
+    setDownloadToplevel();
+    write(
+        "BUILD",
+        "genrule(",
+        "  name = 'foo',",
+        "  outs = ['foo'],",
+        "  cmd = 'echo hello > $@',",
+        ")",
+        "genrule(",
+        "  name = 'gen',",
+        "  srcs = ['foo'],",
+        "  outs = ['foo-link'],",
+        "  cmd = 'cd $(RULEDIR) && ln -s foo foo-link',",
+        // In Blaze, heuristic label expansion defaults to True and will cause `foo` to be expanded
+        // into `blaze-out/.../bin/foo` in the genrule command line.
+        "  heuristic_label_expansion = False,",
+        ")");
+
+    buildTarget("//:gen");
+
+    assertSymlink("foo-link", getOutputPath("foo").asFragment());
+    assertValidOutputFile("foo-link", "hello\n");
+
+    // Delete link, re-plant symlink
+    getOutputPath("foo").delete();
+    buildTarget("//:gen");
+
+    assertSymlink("foo-link", getOutputPath("foo").asFragment());
+    assertValidOutputFile("foo-link", "hello\n");
+
+    // Delete target, re-download it
+    getOutputPath("foo").delete();
+
+    buildTarget("//:gen");
+
+    assertSymlink("foo-link", getOutputPath("foo").asFragment());
+    assertValidOutputFile("foo-link", "hello\n");
+  }
+
+  @Test
+  public void downloadTopLevel_genruleSymlinkToOutput() throws Exception {
+    setDownloadToplevel();
+    write(
+        "BUILD",
+        "genrule(",
+        "  name = 'gen',",
+        "  outs = ['foo', 'foo-link'],",
+        "  cmd = 'cd $(RULEDIR) && echo hello > foo && ln -s foo foo-link',",
+        // In Blaze, heuristic label expansion defaults to True and will cause `foo` to be expanded
+        // into `blaze-out/.../bin/foo` in the genrule command line.
+        "  heuristic_label_expansion = False,",
+        ")");
+
+    buildTarget("//:gen");
+
+    assertSymlink("foo-link", PathFragment.create("foo"));
+    assertValidOutputFile("foo-link", "hello\n");
+
+    // Delete link, re-plant symlink
+    getOutputPath("foo").delete();
+    buildTarget("//:gen");
+
+    assertSymlink("foo-link", PathFragment.create("foo"));
+    assertValidOutputFile("foo-link", "hello\n");
+
+    // Delete target, re-download it
+    getOutputPath("foo").delete();
+
+    buildTarget("//:gen");
+
+    assertSymlink("foo-link", PathFragment.create("foo"));
+    assertValidOutputFile("foo-link", "hello\n");
   }
 }

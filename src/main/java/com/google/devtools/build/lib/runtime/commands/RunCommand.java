@@ -48,12 +48,17 @@ import com.google.devtools.build.lib.analysis.test.TestProvider;
 import com.google.devtools.build.lib.analysis.test.TestRunnerAction;
 import com.google.devtools.build.lib.analysis.test.TestStrategy;
 import com.google.devtools.build.lib.analysis.test.TestTargetExecutionSettings;
+import com.google.devtools.build.lib.buildeventstream.BuildEventIdUtil;
+import com.google.devtools.build.lib.buildeventstream.BuildEventProtocolOptions;
+import com.google.devtools.build.lib.buildeventstream.BuildEventStreamProtos.BuildEventId;
 import com.google.devtools.build.lib.buildtool.BuildRequest;
 import com.google.devtools.build.lib.buildtool.BuildRequestOptions;
 import com.google.devtools.build.lib.buildtool.BuildResult;
 import com.google.devtools.build.lib.buildtool.BuildTool;
 import com.google.devtools.build.lib.buildtool.OutputDirectoryLinksUtils;
 import com.google.devtools.build.lib.buildtool.PathPrettyPrinter;
+import com.google.devtools.build.lib.buildtool.buildevent.ExecRequestEvent;
+import com.google.devtools.build.lib.buildtool.buildevent.RunBuildCompleteEvent;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.Reporter;
 import com.google.devtools.build.lib.exec.ExecutionOptions;
@@ -85,6 +90,7 @@ import com.google.devtools.build.lib.shell.ShellUtils;
 import com.google.devtools.build.lib.util.CommandDescriptionForm;
 import com.google.devtools.build.lib.util.CommandFailureUtils;
 import com.google.devtools.build.lib.util.DetailedExitCode;
+import com.google.devtools.build.lib.util.ExitCode;
 import com.google.devtools.build.lib.util.FileType;
 import com.google.devtools.build.lib.util.InterruptedFailureDetails;
 import com.google.devtools.build.lib.util.OS;
@@ -167,12 +173,8 @@ public class RunCommand implements BlazeCommand {
   @Override
   public void editOptions(OptionsParser optionsParser) {}
 
-  /**
-   * Compute the arguments the binary should be run with by concatenating the arguments in its
-   * {@code args} attribute and the arguments on the Blaze command line.
-   */
-  private static List<String> computeArgs(
-      ConfiguredTarget targetToRun, List<String> commandLineArgs)
+  /** Returns the arguments in a {@link ConfiguredTarget}'s {@code args} attribute. */
+  private static ImmutableList<String> getBinaryArgs(ConfiguredTarget targetToRun)
       throws InterruptedException, CommandLineExpansionException {
     List<String> args = Lists.newArrayList();
 
@@ -182,8 +184,16 @@ public class RunCommand implements BlazeCommand {
       CommandLine targetArgs = runfilesSupport.getArgs();
       Iterables.addAll(args, targetArgs.arguments());
     }
-    args.addAll(commandLineArgs);
-    return args;
+    return ImmutableList.copyOf(args);
+  }
+
+  /**
+   * Compute the arguments the binary should be run with by concatenating the arguments in a {@link
+   * ConfiguredTarget}'s {@code args} attribute and the arguments on the Blaze command line.
+   */
+  private static ImmutableList<String> getAllCommandLineArgs(
+      ImmutableList<String> argsFromBinary, ImmutableList<String> argsFromResidue) {
+    return ImmutableList.<String>builder().addAll(argsFromBinary).addAll(argsFromResidue).build();
   }
 
   @Override
@@ -194,6 +204,10 @@ public class RunCommand implements BlazeCommand {
 
     // The user must at the least specify an executable target.
     if (targetAndArgs.isEmpty()) {
+      env.getReporter()
+          .post(
+              new RunBuildCompleteEvent(
+                  ExitCode.COMMAND_LINE_ERROR, env.getRuntime().getClock().currentTimeMillis()));
       return reportAndCreateFailureResult(
           env, "Must specify a target to run", Code.NO_TARGET_SPECIFIED);
     }
@@ -204,14 +218,30 @@ public class RunCommand implements BlazeCommand {
     try {
       builtTargets = runBuild(env, options, targetString, runUnder);
     } catch (RunCommandException e) {
+      env.getReporter()
+          .post(
+              new RunBuildCompleteEvent(
+                  e.result.getDetailedExitCode().getExitCode(), e.finishTimeMillis));
       return e.result;
     }
-
-    ImmutableList<String> commandLineArgs =
+    ImmutableList.Builder<BuildEventId> runCompleteChildrenEvents =
+        ImmutableList.<BuildEventId>builder()
+            .add(BuildEventIdUtil.buildToolLogs())
+            .add(BuildEventIdUtil.buildMetrics());
+    if (runOptions.scriptPath == null) {
+      runCompleteChildrenEvents.add(BuildEventIdUtil.execRequestId());
+    }
+    env.getReporter()
+        .post(
+            new RunBuildCompleteEvent(
+                // If the build returned non-zero exit code, an error would have already been
+                // thrown.
+                ExitCode.SUCCESS, builtTargets.stopTime, runCompleteChildrenEvents.build()));
+    ImmutableList<String> argsFromResidue =
         ImmutableList.copyOf(targetAndArgs.subList(1, targetAndArgs.size()));
     RunCommandLine runCommandLine;
     try {
-      runCommandLine = getCommandLineInfo(env, builtTargets, options, commandLineArgs, testPolicy);
+      runCommandLine = getCommandLineInfo(env, builtTargets, options, argsFromResidue, testPolicy);
     } catch (RunCommandException e) {
       return e.result;
     }
@@ -266,16 +296,28 @@ public class RunCommand implements BlazeCommand {
     if (batchMode) {
       runEnv.putAll(env.getClientEnv());
     }
-
     try {
-      return BlazeCommandResult.execute(
+      ExecRequest execRequest =
           buildExecRequest(
               env,
               runCommandLine.workingDir,
               runCommandLine.args,
               runEnv.buildOrThrow(),
               ENV_VARIABLES_TO_CLEAR,
-              builtTargets.configuration));
+              builtTargets.configuration,
+              builtTargets.stopTime);
+      env.getReporter()
+          .post(
+              new ExecRequestEvent(
+                  execRequest,
+                  options.getOptions(BuildEventProtocolOptions.class).includeResidueInRunBepEvent
+                      ? ImmutableList.copyOf(execRequest.getArgvList())
+                      : transformArgvsForExecRequest(
+                          env,
+                          runCommandLine.argsWithoutResidue,
+                          builtTargets.configuration,
+                          builtTargets.stopTime)));
+      return BlazeCommandResult.execute(execRequest);
     } catch (RunCommandException e) {
       return e.result;
     }
@@ -312,7 +354,8 @@ public class RunCommand implements BlazeCommand {
     if (!buildResult.getSuccess()) {
       env.getReporter().handle(Event.error("Build failed. Not running target"));
       throw new RunCommandException(
-          BlazeCommandResult.detailedExitCode(buildResult.getDetailedExitCode()));
+          BlazeCommandResult.detailedExitCode(buildResult.getDetailedExitCode()),
+          buildResult.getStopTime());
     }
     // Build succeeded - make sure outputs are available before attempting to use them.
     flushOutputs(env);
@@ -339,13 +382,14 @@ public class RunCommand implements BlazeCommand {
                 makeErrorMessageForNotHavingASingleTarget(
                     targetString,
                     Iterables.transform(topLevelTargets, ct -> ct.getLabel().toString())),
-                Code.TOO_MANY_TARGETS_SPECIFIED));
+                Code.TOO_MANY_TARGETS_SPECIFIED),
+            result.getStopTime());
       }
 
       for (ConfiguredTarget target : topLevelTargets) {
         BlazeCommandResult targetValidationResult = fullyValidateTarget(env, target);
         if (!targetValidationResult.isSuccess()) {
-          throw new RunCommandException(targetValidationResult);
+          throw new RunCommandException(targetValidationResult, result.getStopTime());
         }
         if (runUnder != null && target.getOriginalLabel().equals(runUnder.getLabel())) {
           if (runUnderTarget != null) {
@@ -353,7 +397,8 @@ public class RunCommand implements BlazeCommand {
                 reportAndCreateFailureResult(
                     env,
                     "Can't identify the run_under target from multiple options?",
-                    Code.RUN_UNDER_TARGET_NOT_BUILT));
+                    Code.RUN_UNDER_TARGET_NOT_BUILT),
+                result.getStopTime());
           }
           runUnderTarget = target;
         } else if (targetToRun == null) {
@@ -365,7 +410,8 @@ public class RunCommand implements BlazeCommand {
                   makeErrorMessageForNotHavingASingleTarget(
                       targetString,
                       Iterables.transform(topLevelTargets, ct -> ct.getLabel().toString())),
-                  Code.TOO_MANY_TARGETS_SPECIFIED));
+                  Code.TOO_MANY_TARGETS_SPECIFIED),
+              result.getStopTime());
         }
       }
     }
@@ -377,7 +423,8 @@ public class RunCommand implements BlazeCommand {
 
     if (targetToRun == null) {
       throw new RunCommandException(
-          reportAndCreateFailureResult(env, NO_TARGET_MESSAGE, Code.NO_TARGET_SPECIFIED));
+          reportAndCreateFailureResult(env, NO_TARGET_MESSAGE, Code.NO_TARGET_SPECIFIED),
+          result.getStopTime());
     }
 
     BuildConfigurationValue configuration =
@@ -389,12 +436,13 @@ public class RunCommand implements BlazeCommand {
       configuration = result.getBuildConfiguration();
     }
 
-    if (!configuration.buildRunfilesManifests()) {
+    if (!configuration.buildRunfileManifests()) {
       throw new RunCommandException(
           reportAndCreateFailureResult(
               env,
               "--nobuild_runfile_manifests is incompatible with the \"run\" command",
-              Code.RUN_PREREQ_UNMET));
+              Code.RUN_PREREQ_UNMET),
+          result.getStopTime());
     }
 
     // Ensure runfiles directories are constructed, both for the target to run
@@ -422,39 +470,44 @@ public class RunCommand implements BlazeCommand {
         }
       } catch (RunfilesException e) {
         env.getReporter().handle(Event.error(e.getMessage()));
-        throw new RunCommandException(BlazeCommandResult.failureDetail(e.createFailureDetail()));
+        throw new RunCommandException(
+            BlazeCommandResult.failureDetail(e.createFailureDetail()), result.getStopTime());
       } catch (InterruptedException e) {
         env.getReporter().handle(Event.error("Interrupted"));
         throw new RunCommandException(
             BlazeCommandResult.failureDetail(
                 FailureDetail.newBuilder()
                     .setInterrupted(Interrupted.newBuilder().setCode(Interrupted.Code.INTERRUPTED))
-                    .build()));
+                    .build()),
+            result.getStopTime());
       }
     }
-
     return new BuiltTargets(
         targetToRun,
         targetToRunRunfilesDir,
         targetToRunRunfilesSupport,
         runUnderTarget,
-        configuration);
+        configuration,
+        result.getStopTime());
   }
 
   /** Encapsulates information for launching the command specified by a run invocation. */
   private static class RunCommandLine {
     private final ImmutableList<String> args;
     private final ImmutableList<String> prettyPrintArgs;
+    private final ImmutableList<String> argsWithoutResidue;
     private final ImmutableSortedMap<String, String> runEnvironment;
     private final Path workingDir;
 
     private RunCommandLine(
         ImmutableList<String> args,
         ImmutableList<String> prettyPrintArgs,
+        ImmutableList<String> argsWithoutResidue,
         ImmutableSortedMap<String, String> runEnvironment,
         Path workingDir) {
       this.args = args;
       this.prettyPrintArgs = prettyPrintArgs;
+      this.argsWithoutResidue = argsWithoutResidue;
       this.runEnvironment = runEnvironment;
       this.workingDir = workingDir;
     }
@@ -464,12 +517,13 @@ public class RunCommand implements BlazeCommand {
       CommandEnvironment env,
       BuiltTargets builtTargets,
       OptionsParsingResult options,
-      ImmutableList<String> commandLineArgs,
+      ImmutableList<String> argsFromResidue,
       TestPolicy testPolicy)
       throws RunCommandException {
     Map<String, String> runEnvironment = new TreeMap<>();
     List<String> cmdLine = new ArrayList<>();
     List<String> prettyCmdLine = new ArrayList<>();
+    List<String> redactedCmdLine = new ArrayList<>();
     Path workingDir;
 
     runEnvironment.put("BUILD_WORKSPACE_DIRECTORY", env.getWorkspace().getPathString());
@@ -482,7 +536,8 @@ public class RunCommand implements BlazeCommand {
       if (statusArtifacts.size() != 1) {
         throw new RunCommandException(
             reportAndCreateFailureResult(
-                env, MULTIPLE_TESTS_MESSAGE, Code.TOO_MANY_TEST_SHARDS_OR_RUNS));
+                env, MULTIPLE_TESTS_MESSAGE, Code.TOO_MANY_TEST_SHARDS_OR_RUNS),
+            builtTargets.stopTime);
       }
 
       TestRunnerAction testAction =
@@ -494,7 +549,7 @@ public class RunCommand implements BlazeCommand {
       // ensureRunfilesBuilt does build the runfiles, but an extra consistency check won't hurt.
       Preconditions.checkState(
           settings.getRunfilesSymlinksCreated()
-              == options.getOptions(CoreOptions.class).buildRunfiles);
+              == options.getOptions(CoreOptions.class).buildRunfileLinks);
 
       ExecutionOptions executionOptions = options.getOptions(ExecutionOptions.class);
       Path tmpDirRoot =
@@ -529,29 +584,33 @@ public class RunCommand implements BlazeCommand {
             reportAndCreateFailureResult(
                 env,
                 "Error while setting up test: " + e.getMessage(),
-                Code.TEST_ENVIRONMENT_SETUP_FAILURE));
+                Code.TEST_ENVIRONMENT_SETUP_FAILURE),
+            builtTargets.stopTime);
       } catch (InterruptedException e) {
         throw new RunCommandException(
             reportAndCreateFailureResult(
                 env,
                 "Error while setting up test: " + e.getMessage(),
-                Code.TEST_ENVIRONMENT_SETUP_INTERRUPTED));
+                Code.TEST_ENVIRONMENT_SETUP_INTERRUPTED),
+            builtTargets.stopTime);
       }
 
       try {
         cmdLine.addAll(TestStrategy.getArgs(testAction));
-        cmdLine.addAll(commandLineArgs);
+        cmdLine.addAll(argsFromResidue);
         prettyCmdLine.addAll(cmdLine);
       } catch (ExecException e) {
         throw new RunCommandException(
             reportAndCreateFailureResult(
-                env, Strings.nullToEmpty(e.getMessage()), Code.COMMAND_LINE_EXPANSION_FAILURE));
+                env, Strings.nullToEmpty(e.getMessage()), Code.COMMAND_LINE_EXPANSION_FAILURE),
+            builtTargets.stopTime);
       } catch (InterruptedException e) {
         String message = "run: command line expansion interrupted";
         env.getReporter().handle(Event.error(message));
         throw new RunCommandException(
             BlazeCommandResult.detailedExitCode(
-                InterruptedFailureDetails.detailedExitCode(message)));
+                InterruptedFailureDetails.detailedExitCode(message)),
+            builtTargets.stopTime);
       }
     } else {
       workingDir =
@@ -572,31 +631,40 @@ public class RunCommand implements BlazeCommand {
       }
       actionEnvironment.resolve(runEnvironment, env.getClientEnv());
       try {
-        List<String> args = computeArgs(builtTargets.targetToRun, commandLineArgs);
+        ImmutableList<String> argsFromBinary = getBinaryArgs(builtTargets.targetToRun);
+        ImmutableList<String> allCommandLineArgs =
+            getAllCommandLineArgs(argsFromBinary, argsFromResidue);
+
         constructCommandLine(
             cmdLine,
             prettyCmdLine,
+            redactedCmdLine,
             env,
             builtTargets.configuration,
             builtTargets.targetToRun,
             builtTargets.runUnderTarget,
-            args);
+            argsFromBinary,
+            allCommandLineArgs,
+            builtTargets.stopTime);
       } catch (InterruptedException e) {
         String message = "run: command line expansion interrupted";
         env.getReporter().handle(Event.error(message));
         throw new RunCommandException(
             BlazeCommandResult.detailedExitCode(
-                InterruptedFailureDetails.detailedExitCode(message)));
+                InterruptedFailureDetails.detailedExitCode(message)),
+            builtTargets.stopTime);
       } catch (CommandLineExpansionException e) {
         throw new RunCommandException(
             reportAndCreateFailureResult(
-                env, Strings.nullToEmpty(e.getMessage()), Code.COMMAND_LINE_EXPANSION_FAILURE));
+                env, Strings.nullToEmpty(e.getMessage()), Code.COMMAND_LINE_EXPANSION_FAILURE),
+            builtTargets.stopTime);
       }
     }
 
     return new RunCommandLine(
         ImmutableList.copyOf(cmdLine),
         ImmutableList.copyOf(prettyCmdLine),
+        ImmutableList.copyOf(redactedCmdLine),
         ImmutableSortedMap.copyOf(runEnvironment),
         workingDir);
   }
@@ -604,11 +672,14 @@ public class RunCommand implements BlazeCommand {
   private static void constructCommandLine(
       List<String> cmdLine,
       List<String> prettyCmdLine,
+      List<String> redactedCmdLine,
       CommandEnvironment env,
       BuildConfigurationValue configuration,
       ConfiguredTarget targetToRun,
       ConfiguredTarget runUnderTarget,
-      List<String> args)
+      ImmutableList<String> argsFromBinary,
+      ImmutableList<String> allCommandLineArgs,
+      long stopTime)
       throws RunCommandException {
     BlazeRuntime runtime = env.getRuntime();
     String productName = runtime.getProductName();
@@ -657,30 +728,48 @@ public class RunCommand implements BlazeCommand {
                 "the \"run\" command needs a shell with \"--run_under\"; use the"
                     + " --shell_executable=<path> flag to specify its path, e.g."
                     + " --shell_executable=/bin/bash",
-                Code.NO_SHELL_SPECIFIED));
+                Code.NO_SHELL_SPECIFIED),
+            stopTime);
       }
 
       cmdLine.add(shellExecutable.getPathString());
       cmdLine.add("-c");
-      cmdLine.add(
+      String cmdLineArgs =
           runUnderValue
               + " "
               + executablePath.getPathString()
               + " "
-              + ShellEscaper.escapeJoinAll(args));
+              + ShellEscaper.escapeJoinAll(allCommandLineArgs);
+      cmdLine.add(cmdLineArgs);
+
       prettyCmdLine.add(shellExecutable.getPathString());
       prettyCmdLine.add("-c");
-      prettyCmdLine.add(
+      String prettyCommandLineArgs =
           runUnderValue
               + " "
               + prettyExecutablePath.getPathString()
               + " "
-              + ShellEscaper.escapeJoinAll(args));
+              + ShellEscaper.escapeJoinAll(allCommandLineArgs);
+      prettyCmdLine.add(prettyCommandLineArgs);
+
+      redactedCmdLine.add(shellExecutable.getPathString());
+      redactedCmdLine.add("-c");
+      String redactedCommandLineArgs =
+          runUnderValue
+              + " "
+              + executablePath.getPathString()
+              + " "
+              + ShellEscaper.escapeJoinAll(argsFromBinary);
+      redactedCmdLine.add(redactedCommandLineArgs);
     } else {
       cmdLine.add(executablePath.getPathString());
-      cmdLine.addAll(args);
+      cmdLine.addAll(allCommandLineArgs);
+
       prettyCmdLine.add(prettyExecutablePath.getPathString());
-      prettyCmdLine.addAll(args);
+      prettyCmdLine.addAll(allCommandLineArgs);
+
+      redactedCmdLine.add(executablePath.getPathString());
+      redactedCmdLine.addAll(argsFromBinary);
     }
   }
 
@@ -690,49 +779,13 @@ public class RunCommand implements BlazeCommand {
       ImmutableList<String> args,
       ImmutableSortedMap<String, String> runEnv,
       ImmutableList<String> runEnvToClear,
-      BuildConfigurationValue configuration)
+      BuildConfigurationValue configuration,
+      long stopTime)
       throws RunCommandException {
     ExecRequest.Builder execDescription =
         ExecRequest.newBuilder()
             .setWorkingDirectory(ByteString.copyFrom(workingDir.getPathString(), ISO_8859_1));
-
-    if (OS.getCurrent() == OS.WINDOWS) {
-      boolean isBinary = true;
-      for (String arg : args) {
-        if (!isBinary) {
-          // All but the first element in `cmdLine` have to be escaped. The first element is the
-          // binary, which must not be escaped.
-          arg = ShellUtils.windowsEscapeArg(arg);
-        }
-        execDescription.addArgv(ByteString.copyFrom(arg, ISO_8859_1));
-        isBinary = false;
-      }
-    } else {
-      PathFragment shExecutable = ShToolchain.getPathForHost(configuration);
-      if (shExecutable.isEmpty()) {
-        throw new RunCommandException(
-            reportAndCreateFailureResult(
-                env,
-                "the \"run\" command needs a shell with; use the --shell_executable=<path> "
-                    + "flag to specify the shell's path, e.g. --shell_executable=/bin/bash",
-                Code.NO_SHELL_SPECIFIED));
-      }
-
-      String shellEscaped = ShellEscaper.escapeJoinAll(args);
-      if (OS.getCurrent() == OS.WINDOWS) {
-        // On Windows, we run Bash as a subprocess of the client (via CreateProcessW).
-        // Bash uses its own (Bash-style) flag parsing logic, not the default logic for which
-        // ShellUtils.windowsEscapeArg escapes, so we escape the flags once again Bash-style.
-        shellEscaped = "\"" + shellEscaped.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-      }
-
-      ImmutableList<String> shellCmdLine =
-          ImmutableList.<String>of(shExecutable.getPathString(), "-c", shellEscaped);
-
-      for (String arg : shellCmdLine) {
-        execDescription.addArgv(ByteString.copyFrom(arg, ISO_8859_1));
-      }
-    }
+    execDescription.addAllArgv(transformArgvsForExecRequest(env, args, configuration, stopTime));
 
     for (Map.Entry<String, String> variable : runEnv.entrySet()) {
       execDescription.addEnvironmentVariable(
@@ -748,12 +801,62 @@ public class RunCommand implements BlazeCommand {
     return execDescription.build();
   }
 
+  private static ImmutableList<ByteString> transformArgvsForExecRequest(
+      CommandEnvironment env,
+      List<String> args,
+      BuildConfigurationValue configuration,
+      long stopTime)
+      throws RunCommandException {
+    List<ByteString> execDescription = Lists.newArrayList();
+    if (OS.getCurrent() == OS.WINDOWS) {
+      boolean isBinary = true;
+      for (String arg : args) {
+        if (!isBinary) {
+          // All but the first element in `cmdLine` have to be escaped. The first element is the
+          // binary, which must not be escaped.
+          arg = ShellUtils.windowsEscapeArg(arg);
+        }
+        execDescription.add(ByteString.copyFrom(arg, ISO_8859_1));
+        isBinary = false;
+      }
+    } else {
+      PathFragment shExecutable = ShToolchain.getPathForHost(configuration);
+      if (shExecutable.isEmpty()) {
+        throw new RunCommandException(
+            reportAndCreateFailureResult(
+                env,
+                "the \"run\" command needs a shell with; use the --shell_executable=<path> "
+                    + "flag to specify the shell's path, e.g. --shell_executable=/bin/bash",
+                Code.NO_SHELL_SPECIFIED),
+            stopTime);
+      }
+
+      String shellEscaped = ShellEscaper.escapeJoinAll(args);
+      if (OS.getCurrent() == OS.WINDOWS) {
+        // On Windows, we run Bash as a subprocess of the client (via CreateProcessW).
+        // Bash uses its own (Bash-style) flag parsing logic, not the default logic for which
+        // ShellUtils.windowsEscapeArg escapes, so we escape the flags once again Bash-style.
+        shellEscaped = "\"" + shellEscaped.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+      }
+
+      ImmutableList<String> shellCmdLine =
+          ImmutableList.<String>of(shExecutable.getPathString(), "-c", shellEscaped);
+
+      for (String arg : shellCmdLine) {
+        execDescription.add(ByteString.copyFrom(arg, ISO_8859_1));
+      }
+    }
+    return ImmutableList.copyOf(execDescription);
+  }
+
   private static class RunCommandException extends Exception {
     private final BlazeCommandResult result;
+    private final long finishTimeMillis;
 
-    private RunCommandException(BlazeCommandResult result) {
+    private RunCommandException(BlazeCommandResult result, long finishTimeMillis) {
       Preconditions.checkArgument(!result.isSuccess(), "Success is not exceptional: %s", result);
       this.result = result;
+      this.finishTimeMillis = finishTimeMillis;
     }
   }
 
@@ -764,18 +867,21 @@ public class RunCommand implements BlazeCommand {
     private final RunfilesSupport targetToRunRunfilesSupport;
     @Nullable private final ConfiguredTarget runUnderTarget;
     private final BuildConfigurationValue configuration;
+    private final long stopTime;
 
     private BuiltTargets(
         ConfiguredTarget targetToRun,
         Path targetToRunRunfilesDir,
         RunfilesSupport targetToRunRunfilesSupport,
         @Nullable ConfiguredTarget runUnderTarget,
-        BuildConfigurationValue configuration) {
+        BuildConfigurationValue configuration,
+        long stopTime) {
       this.targetToRun = targetToRun;
       this.runUnderTarget = runUnderTarget;
       this.targetToRunRunfilesDir = targetToRunRunfilesDir;
       this.targetToRunRunfilesSupport = targetToRunRunfilesSupport;
       this.configuration = configuration;
+      this.stopTime = stopTime;
     }
   }
 

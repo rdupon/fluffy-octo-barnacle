@@ -15,6 +15,8 @@
 package com.google.devtools.build.lib.rules.cpp;
 
 import static com.google.common.base.StandardSystemProperty.LINE_SEPARATOR;
+import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Ascii;
@@ -35,13 +37,13 @@ import com.google.devtools.build.lib.analysis.starlark.StarlarkRuleContext;
 import com.google.devtools.build.lib.cmdline.BazelModuleContext;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.LabelSyntaxException;
-import com.google.devtools.build.lib.cmdline.PackageIdentifier;
 import com.google.devtools.build.lib.collect.nestedset.Depset;
 import com.google.devtools.build.lib.collect.nestedset.Depset.TypeException;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.packages.BazelStarlarkContext;
+import com.google.devtools.build.lib.packages.BuiltinRestriction;
 import com.google.devtools.build.lib.packages.Info;
 import com.google.devtools.build.lib.packages.Provider;
 import com.google.devtools.build.lib.packages.RuleClass.ConfiguredTargetFactory.RuleErrorException;
@@ -139,23 +141,22 @@ public abstract class CcModule
   private static final ImmutableList<String> SUPPORTED_OUTPUT_TYPES =
       ImmutableList.of("executable", "dynamic_library", "archive");
 
-  private static final ImmutableList<PackageIdentifier> PRIVATE_STARLARKIFICATION_ALLOWLIST =
-      // Repo names in the allowlist are non canonical repo names and package names are package
-      // prefixes under which we allow restricted API usage.
-      ImmutableList.of(
-          PackageIdentifier.createUnchecked("_builtins", ""),
-          PackageIdentifier.createInMainRepo("bazel_internal/test_rules/cc"),
-          PackageIdentifier.createInMainRepo("tools/build_defs/android"),
-          PackageIdentifier.createInMainRepo("third_party/bazel_rules/rules_android"),
-          PackageIdentifier.createUnchecked("build_bazel_rules_android", ""),
-          PackageIdentifier.createUnchecked("rules_android", ""),
-          PackageIdentifier.createInMainRepo("rust/private"),
-          PackageIdentifier.createUnchecked("rules_rust", "rust/private"));
+  private static final ImmutableList<BuiltinRestriction.AllowlistEntry>
+      PRIVATE_STARLARKIFICATION_ALLOWLIST =
+          ImmutableList.of(
+              BuiltinRestriction.allowlistEntry("", "bazel_internal/test_rules/cc"),
+              BuiltinRestriction.allowlistEntry("", "tools/build_defs/android"),
+              BuiltinRestriction.allowlistEntry("", "third_party/bazel_rules/rules_android"),
+              BuiltinRestriction.allowlistEntry(
+                  "", "rust/private"),
+              BuiltinRestriction.allowlistEntry("build_bazel_rules_android", ""),
+              BuiltinRestriction.allowlistEntry("rules_android", ""),
+              BuiltinRestriction.allowlistEntry("rules_rust", "rust/private"));
 
   // TODO(bazel-team): This only makes sense for the parameter in cc_common.compile()
   //  additional_include_scanning_roots which is technical debt and should go away.
-  private static final PathFragment MATCH_CLIF_ALLOWLISTED_LOCATION =
-      PathFragment.create("tools/build_defs/clif");
+  private static final BuiltinRestriction.AllowlistEntry MATCH_CLIF_ALLOWLISTED_LOCATION =
+      BuiltinRestriction.allowlistEntry("", "tools/build_defs/clif");
 
   public abstract CppSemantics getSemantics();
 
@@ -807,13 +808,43 @@ public abstract class CcModule
       Sequence<?> directPrivateHdrs,
       Object purposeNoneable,
       Object moduleMap,
+      Object actionFactoryForMiddlemanOwnerAndConfiguration,
+      Object labelForMiddlemanNameObject,
+      Object externalIncludes,
+      Object virtualToOriginalHeaders,
+      Sequence<?> dependentCcCompilationContexts,
+      Sequence<?> nonCodeInputs,
+      Sequence<?> looseHdrsDirsObject,
+      String headersCheckingMode,
+      Boolean propagateModuleMapToCompileAction,
+      Object picHeaderModule,
+      Object headerModule,
+      Sequence<?> separateModuleHeaders,
+      Object separateModule,
+      Object separatePicModule,
+      Object addPublicHeadersToModularHeaders,
       StarlarkThread thread)
       throws EvalException {
     isCalledFromStarlarkCcCommon(thread);
+
+    Label label = convertFromNoneable(labelForMiddlemanNameObject, null);
     CcCompilationContext.Builder ccCompilationContext =
         CcCompilationContext.builder(
-            /* actionConstructionContext= */ null, /* configuration= */ null, /* label= */ null);
+            /* actionConstructionContext= */ actionFactoryForMiddlemanOwnerAndConfiguration
+                    == Starlark.NONE
+                ? null
+                : ((StarlarkActionFactory) actionFactoryForMiddlemanOwnerAndConfiguration)
+                    .getActionConstructionContext(),
+            /* configuration= */ actionFactoryForMiddlemanOwnerAndConfiguration == Starlark.NONE
+                ? null
+                : ((StarlarkActionFactory) actionFactoryForMiddlemanOwnerAndConfiguration)
+                    .getActionConstructionContext()
+                    .getConfiguration(),
+            /* label= */ label);
+
+    // Public parameters.
     ImmutableList<Artifact> headerList = toNestedSetOfArtifacts(headers, "headers").toList();
+    ccCompilationContext.addDeclaredIncludeSrcs(headerList);
     ImmutableList<Artifact> textualHdrsList =
         Sequence.cast(directTextualHdrs, Artifact.class, "direct_textual_headers")
             .getImmutableList();
@@ -822,37 +853,80 @@ public abstract class CcModule
     ImmutableList<Artifact> modularPrivateHdrsList =
         Sequence.cast(directPrivateHdrs, Artifact.class, "direct_private_headers")
             .getImmutableList();
-    ccCompilationContext.addDeclaredIncludeSrcs(headerList);
-    ccCompilationContext.addModularPublicHdrs(headerList);
+
     ccCompilationContext.addSystemIncludeDirs(
         toNestedSetOfStrings(systemIncludes, "system_includes").toList().stream()
             .map(x -> PathFragment.create(x))
-            .collect(ImmutableList.toImmutableList()));
+            .collect(toImmutableList()));
     ccCompilationContext.addIncludeDirs(
         toNestedSetOfStrings(includes, "includes").toList().stream()
             .map(x -> PathFragment.create(x))
-            .collect(ImmutableList.toImmutableList()));
+            .collect(toImmutableList()));
     ccCompilationContext.addQuoteIncludeDirs(
         toNestedSetOfStrings(quoteIncludes, "quote_includes").toList().stream()
             .map(x -> PathFragment.create(x))
-            .collect(ImmutableList.toImmutableList()));
+            .collect(toImmutableList()));
     ccCompilationContext.addFrameworkIncludeDirs(
         toNestedSetOfStrings(frameworkIncludes, "framework_includes").toList().stream()
             .map(x -> PathFragment.create(x))
-            .collect(ImmutableList.toImmutableList()));
+            .collect(toImmutableList()));
     ccCompilationContext.addDefines(toNestedSetOfStrings(defines, "defines").toList());
     ccCompilationContext.addNonTransitiveDefines(
         toNestedSetOfStrings(localDefines, "local_defines").toList());
     ccCompilationContext.addTextualHdrs(textualHdrsList);
     ccCompilationContext.addModularPublicHdrs(modularPublicHdrsList);
     ccCompilationContext.addModularPrivateHdrs(modularPrivateHdrsList);
+
+    // Private parameters.
     if (purposeNoneable != null
         && purposeNoneable != Starlark.UNBOUND
         && purposeNoneable != Starlark.NONE) {
       ccCompilationContext.setPurpose((String) purposeNoneable);
     }
+
     if (moduleMap != null && moduleMap != Starlark.UNBOUND && moduleMap != Starlark.NONE) {
       ccCompilationContext.setCppModuleMap((CppModuleMap) moduleMap);
+    }
+
+    ccCompilationContext.addExternalIncludeDirs(
+        toNestedSetOfStrings(externalIncludes, "external_includes").toList().stream()
+            .map(PathFragment::create)
+            .collect(toImmutableList()));
+
+    ccCompilationContext.addVirtualToOriginalHeaders(
+        Depset.cast(virtualToOriginalHeaders, Tuple.class, "virtual_to_original_headers"));
+
+    ccCompilationContext.addDependentCcCompilationContexts(
+        Sequence.cast(
+                dependentCcCompilationContexts,
+                CcCompilationContext.class,
+                "dependent_cc_compilation_contexts")
+            .getImmutableList());
+
+    ccCompilationContext.addNonCodeInputs(
+        Sequence.cast(nonCodeInputs, Artifact.class, "non_code_inputs").getImmutableList());
+
+    ImmutableList<PathFragment> looseHdrsDirs =
+        Sequence.cast(looseHdrsDirsObject, String.class, "loose_hdrs_dirs").stream()
+            .map(PathFragment::create)
+            .collect(toImmutableList());
+    for (PathFragment looseHdrDir : looseHdrsDirs) {
+      ccCompilationContext.addLooseHdrsDir(looseHdrDir);
+    }
+
+    ccCompilationContext.setHeadersCheckingMode(HeadersCheckingMode.getValue(headersCheckingMode));
+    ccCompilationContext.setPropagateCppModuleMapAsActionInput(propagateModuleMapToCompileAction);
+    ccCompilationContext.setPicHeaderModule(
+        picHeaderModule == Starlark.NONE ? null : (Artifact.DerivedArtifact) picHeaderModule);
+    ccCompilationContext.setHeaderModule(
+        headerModule == Starlark.NONE ? null : (Artifact.DerivedArtifact) headerModule);
+    ccCompilationContext.setSeparateModuleHdrs(
+        Sequence.cast(separateModuleHeaders, Artifact.class, "separate_module_headers"),
+        convertFromNoneable(separateModule, null),
+        convertFromNoneable(separatePicModule, null));
+
+    if ((Boolean) addPublicHeadersToModularHeaders) {
+      ccCompilationContext.addModularPublicHdrs(headerList);
     }
 
     return ccCompilationContext.build();
@@ -1063,12 +1137,21 @@ public abstract class CcModule
   }
 
   @Override
+  public boolean getIncompatibleDisableObjcLibraryTransition(StarlarkThread thread)
+      throws EvalException {
+    isCalledFromStarlarkCcCommon(thread);
+    return thread
+        .getSemantics()
+        .getBool(BuildLanguageOptions.INCOMPATIBLE_DISABLE_OBJC_LIBRARY_TRANSITION);
+  }
+
+  @Override
   public CcLinkingContext createCcLinkingInfo(
       Object linkerInputs,
       Object librariesToLinkObject,
       Object userLinkFlagsObject,
       Object nonCodeInputsObject,
-      Object goLinkCArchiveObject,
+      Object extraLinkTimeLibraryObject,
       StarlarkThread thread)
       throws EvalException {
     isCalledFromStarlarkCcCommon(thread);
@@ -1111,11 +1194,11 @@ public abstract class CcModule
       CcLinkingContext.Builder ccLinkingContextBuilder = CcLinkingContext.builder();
       ccLinkingContextBuilder.addTransitiveLinkerInputs(
           Depset.noneableCast(linkerInputs, CcLinkingContext.LinkerInput.class, "linker_inputs"));
-      ExtraLinkTimeLibrary goLinkCArchive =
-          convertFromNoneable(goLinkCArchiveObject, /* defaultValue= */ null);
-      if (goLinkCArchive != null) {
+      ExtraLinkTimeLibrary extraLinkTimeLibrary =
+          convertFromNoneable(extraLinkTimeLibraryObject, /* defaultValue= */ null);
+      if (extraLinkTimeLibrary != null) {
         ccLinkingContextBuilder.setExtraLinkTimeLibraries(
-            ExtraLinkTimeLibraries.builder().add(goLinkCArchive).build());
+            ExtraLinkTimeLibraries.builder().add(extraLinkTimeLibrary).build());
       }
 
       @SuppressWarnings("unchecked")
@@ -1188,9 +1271,7 @@ public abstract class CcModule
     ImmutableList<Feature> featureList = featureBuilder.build();
 
     ImmutableSet<String> featureNames =
-        featureList.stream()
-            .map(feature -> feature.getName())
-            .collect(ImmutableSet.toImmutableSet());
+        featureList.stream().map(Feature::getName).collect(toImmutableSet());
 
     ImmutableList.Builder<ActionConfig> actionConfigBuilder = ImmutableList.builder();
     for (Object actionConfig : actionConfigs) {
@@ -1202,7 +1283,7 @@ public abstract class CcModule
     ImmutableSet<String> actionConfigNames =
         actionConfigList.stream()
             .map(actionConfig -> actionConfig.getActionName())
-            .collect(ImmutableSet.toImmutableSet());
+            .collect(toImmutableSet());
 
     CcToolchainFeatures.ArtifactNamePatternMapper.Builder artifactNamePatternBuilder =
         new CcToolchainFeatures.ArtifactNamePatternMapper.Builder();
@@ -1291,7 +1372,7 @@ public abstract class CcModule
           featureList.stream()
               .filter(feature -> !feature.getName().equals(CppRuleClasses.LEGACY_COMPILE_FLAGS))
               .filter(feature -> !feature.getName().equals(CppRuleClasses.DEFAULT_COMPILE_FLAGS))
-              .collect(ImmutableList.toImmutableList()));
+              .collect(toImmutableList()));
       for (CToolchain.Feature feature :
           CppActionConfigs.getFeaturesToAppearLastInFeaturesList(featureNames)) {
         legacyFeaturesBuilder.add(new Feature(feature));
@@ -1991,39 +2072,9 @@ public abstract class CcModule
         Sequence.cast(debugInfos, CcDebugInfoContext.class, "debug_infos"));
   }
 
-  private static void checkPrivateStarlarkificationAllowlistByLabel(
-      BazelModuleContext bazelModuleContext,
-      Label label,
-      ImmutableList<PackageIdentifier> privateStarlarkificationAllowlist)
-      throws EvalException {
-    if (privateStarlarkificationAllowlist.stream()
-        .noneMatch(
-            allowedPrefix ->
-                label
-                        .getRepository()
-                        .equals(
-                            bazelModuleContext
-                                .repoMapping()
-                                .get(allowedPrefix.getRepository().getName()))
-                    && label.getPackageFragment().startsWith(allowedPrefix.getPackageFragment()))) {
-      throw Starlark.errorf("Rule in '%s' cannot use private API", label);
-    }
-  }
-
   public static void checkPrivateStarlarkificationAllowlist(StarlarkThread thread)
       throws EvalException {
-    BazelModuleContext bazelModuleContext =
-        (BazelModuleContext) Module.ofInnermostEnclosingStarlarkFunction(thread).getClientData();
-    Label label = bazelModuleContext.label();
-    checkPrivateStarlarkificationAllowlistByLabel(
-        bazelModuleContext, label, PRIVATE_STARLARKIFICATION_ALLOWLIST);
-  }
-
-  public static boolean isBuiltIn(StarlarkThread thread) {
-    Label label =
-        ((BazelModuleContext) Module.ofInnermostEnclosingStarlarkFunction(thread).getClientData())
-            .label();
-    return label.getPackageIdentifier().getRepository().getName().equals("_builtins");
+    BuiltinRestriction.failIfCalledOutsideAllowlist(thread, PRIVATE_STARLARKIFICATION_ALLOWLIST);
   }
 
   public static boolean isStarlarkCcCommonCalledFromBuiltins(StarlarkThread thread) {
@@ -2035,9 +2086,7 @@ public abstract class CcModule
   }
 
   protected static void isCalledFromStarlarkCcCommon(StarlarkThread thread) throws EvalException {
-    Label label =
-        ((BazelModuleContext) Module.ofInnermostEnclosingStarlarkFunction(thread).getClientData())
-            .label();
+    Label label = BazelModuleContext.ofInnermostBzlOrThrow(thread).label();
     if (!label.getCanonicalForm().endsWith("_builtins//:common/cc/cc_common.bzl")) {
       throw Starlark.errorf(
           "cc_common_internal can only be used by cc_common.bzl in builtins, "
@@ -2064,12 +2113,13 @@ public abstract class CcModule
     isCalledFromStarlarkCcCommon(thread);
     BazelModuleContext bazelModuleContext =
         (BazelModuleContext) Module.ofInnermostEnclosingStarlarkFunction(thread, 1).getClientData();
-    Label label = bazelModuleContext.label();
-    ImmutableList<PackageIdentifier> allowlist =
+    ImmutableList<BuiltinRestriction.AllowlistEntry> allowlist =
         Sequence.cast(allowlistObject, Tuple.class, "allowlist").stream()
-            .map(p -> PackageIdentifier.createUnchecked((String) p.get(0), (String) p.get(1)))
-            .collect(ImmutableList.toImmutableList());
-    checkPrivateStarlarkificationAllowlistByLabel(bazelModuleContext, label, allowlist);
+            // TODO(bazel-team): Avoid unchecked indexing and casts on values obtained from
+            // Starlark, even though it is allowlisted.
+            .map(p -> BuiltinRestriction.allowlistEntry((String) p.get(0), (String) p.get(1)))
+            .collect(toImmutableList());
+    BuiltinRestriction.failIfModuleOutsideAllowlist(bazelModuleContext, allowlist);
   }
 
   protected Language parseLanguage(String string) throws EvalException {
@@ -2583,20 +2633,19 @@ public abstract class CcModule
             Sequence.cast(
                 ccCompilationContexts, CcCompilationContext.class, "compilation_contexts"))
         .addImplementationDepsCcCompilationContexts(implementationContexts)
-        .addIncludeDirs(
-            includes.stream().map(PathFragment::create).collect(ImmutableList.toImmutableList()))
+        .addIncludeDirs(includes.stream().map(PathFragment::create).collect(toImmutableList()))
         .addQuoteIncludeDirs(
             Sequence.cast(quoteIncludes, String.class, "quote_includes").stream()
                 .map(PathFragment::create)
-                .collect(ImmutableList.toImmutableList()))
+                .collect(toImmutableList()))
         .addSystemIncludeDirs(
             Sequence.cast(systemIncludes, String.class, "system_includes").stream()
                 .map(PathFragment::create)
-                .collect(ImmutableList.toImmutableList()))
+                .collect(toImmutableList()))
         .addFrameworkIncludeDirs(
             Sequence.cast(frameworkIncludes, String.class, "framework_includes").stream()
                 .map(PathFragment::create)
-                .collect(ImmutableList.toImmutableList()))
+                .collect(toImmutableList()))
         .addDefines(Sequence.cast(defines, String.class, "defines"))
         .addNonTransitiveDefines(Sequence.cast(localDefines, String.class, "local_defines"))
         .setCopts(
@@ -2608,15 +2657,13 @@ public abstract class CcModule
         .addAdditionalIncludeScanningRoots(includeScanningRoots)
         .setPurpose(common.getPurpose(getSemantics(language)))
         .addAdditionalExportedHeaders(
-            additionalExportedHeaders.stream()
-                .map(PathFragment::create)
-                .collect(ImmutableList.toImmutableList()))
+            additionalExportedHeaders.stream().map(PathFragment::create).collect(toImmutableList()))
         .setPropagateModuleMapToCompileAction(propagateModuleMapToCompileAction)
         .setCodeCoverageEnabled(codeCoverageEnabled)
         .setHeadersCheckingMode(HeadersCheckingMode.getValue(hdrsCheckingMode));
 
     ImmutableList<PathFragment> looseIncludeDirs =
-        looseIncludes.stream().map(PathFragment::create).collect(ImmutableList.toImmutableList());
+        looseIncludes.stream().map(PathFragment::create).collect(toImmutableList());
     if (!looseIncludeDirs.isEmpty()) {
       helper.setLooseIncludeDirs(ImmutableSet.copyOf(looseIncludeDirs));
     }
@@ -2673,14 +2720,12 @@ public abstract class CcModule
 
   private List<Artifact> getAdditionalIncludeScanningRoots(
       Sequence<?> additionalIncludeScanningRoots, StarlarkThread thread) throws EvalException {
-    PackageIdentifier packageIdentifier =
-        BazelModuleContext.of(Module.ofInnermostEnclosingStarlarkFunction(thread, 1))
-            .label()
-            .getPackageIdentifier();
-    if (!additionalIncludeScanningRoots.isEmpty()
-        && !packageIdentifier.getPackageFragment().startsWith(MATCH_CLIF_ALLOWLISTED_LOCATION)) {
-      throw Starlark.errorf(
-          "This can only be used in %s", MATCH_CLIF_ALLOWLISTED_LOCATION.getPathString());
+    if (!additionalIncludeScanningRoots.isEmpty()) {
+      BazelModuleContext bazelModuleContext =
+          (BazelModuleContext)
+              Module.ofInnermostEnclosingStarlarkFunction(thread, 1).getClientData();
+      BuiltinRestriction.failIfModuleOutsideAllowlist(
+          bazelModuleContext, ImmutableList.of(MATCH_CLIF_ALLOWLISTED_LOCATION));
     }
     return Sequence.cast(
         additionalIncludeScanningRoots, Artifact.class, "additional_include_scanning_roots");
@@ -3023,6 +3068,6 @@ public abstract class CcModule
       throws EvalException {
     return Sequence.cast(sequenceTuple, Tuple.class, "files").stream()
         .map(p -> Pair.of((Artifact) p.get(0), (Label) p.get(1)))
-        .collect(ImmutableList.toImmutableList());
+        .collect(toImmutableList());
   }
 }

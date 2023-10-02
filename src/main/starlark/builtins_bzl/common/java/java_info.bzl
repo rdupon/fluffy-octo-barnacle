@@ -82,6 +82,10 @@ _JavaCompilationInfo = provider(
     fields = {
         "boot_classpath": "Boot classpath for this Java target.",
         "javac_options": "Options to the java compiler.",
+        "javac_options_list": """A list of options to java compiler. This exists
+            temporarily for migration purposes. javac_options will return a depset
+            in the future, and this method will be dropped once all usages have
+            been updated to handle depsets.""",
         "compilation_classpath": "Compilation classpath for this Java target.",
         "runtime_classpath": "Run-time classpath for this Java target.",
     },
@@ -92,6 +96,7 @@ _EMPTY_COMPILATION_INFO = _JavaCompilationInfo(
     runtime_classpath = depset(),
     boot_classpath = None,
     javac_options = [],
+    javac_options_list = [],
 )
 
 def merge(
@@ -152,9 +157,7 @@ def merge(
     java_outputs = depset(java_outputs).to_list()
     result = {
         "transitive_runtime_jars": transitive_runtime_jars,
-        "transitive_runtime_deps": transitive_runtime_jars,  # deprecated
         "transitive_compile_time_jars": transitive_compile_time_jars,
-        "transitive_deps": transitive_compile_time_jars,  # deprecated
         "compile_jars": depset(order = "preorder", transitive = compile_jars),
         "full_compile_jars": depset(order = "preorder", transitive = full_compile_jars),
         "_transitive_full_compile_time_jars": depset(order = "preorder", transitive = _transitive_full_compile_time_jars),
@@ -204,9 +207,7 @@ def to_java_binary_info(java_info):
     """
     result = {
         "transitive_runtime_jars": depset(),
-        "transitive_runtime_deps": depset(),  # deprecated
         "transitive_compile_time_jars": depset(),
-        "transitive_deps": depset(),  # deprecated
         "compile_jars": depset(),
         "full_compile_jars": depset(),
         "_transitive_full_compile_time_jars": depset(),
@@ -232,6 +233,7 @@ def to_java_binary_info(java_info):
         compilation_info = _JavaCompilationInfo(
             boot_classpath = None,
             javac_options = [],
+            javac_options_list = [],
             compilation_classpath = java_info.transitive_compile_time_jars,
             runtime_classpath = java_info.transitive_runtime_jars,
         )
@@ -449,7 +451,6 @@ def java_info_for_compilation(
     result.update(
         runtime_output_jars = direct_runtime_jars,
         transitive_runtime_jars = transitive_runtime_jars,
-        transitive_runtime_deps = transitive_runtime_jars,
         transitive_source_jars = depset(
             direct = [source_jar],
             # only differs from the usual java_info.transitive_source_jars in the order of deps
@@ -471,7 +472,8 @@ def java_info_for_compilation(
     if compilation_info:
         result.update(
             compilation_info = _JavaCompilationInfo(
-                javac_options = compilation_info.javac_options,
+                javac_options = _java_common_internal.intern_javac_opts(compilation_info.javac_options),
+                javac_options_list = _java_common_internal.intern_javac_opts(compilation_info.javac_options_list),
                 boot_classpath = compilation_info.boot_classpath,
                 compilation_classpath = compilation_info.compilation_classpath,
                 runtime_classpath = compilation_info.runtime_classpath,
@@ -566,7 +568,6 @@ def _javainfo_init_base(
     )]
     result = {
         "transitive_compile_time_jars": transitive_compile_time_jars,
-        "transitive_deps": transitive_compile_time_jars,  # deprecated
         "compile_jars": depset(
             order = "preorder",
             direct = [compile_jar] if compile_jar else [],
@@ -724,7 +725,6 @@ def _javainfo_init(
         )
     result.update(
         transitive_runtime_jars = transitive_runtime_jars,
-        transitive_runtime_deps = transitive_runtime_jars,  # deprecated
         transitive_source_jars = depset(
             direct = [source_jar] if source_jar else [],
             # TODO(hvd): native also adds source jars from deps, but this should be unnecessary
@@ -770,8 +770,6 @@ JavaInfo, _new_javainfo = provider(
         "outputs": "Deprecated: use java_outputs.",
         "annotation_processing": "Deprecated: Please use plugins instead.",
         "runtime_output_jars": "([File]) A list of runtime Jars created by this Java/Java-like target.",
-        "transitive_deps": "Deprecated: Please use transitive_compile_time_jars instead.",
-        "transitive_runtime_deps": "Deprecated: please use transitive_runtime_jars instead.",
         "transitive_source_jars": "(depset[File]) The Jars of all source files in the transitive closure.",
         "transitive_native_libraries": """(depset[LibraryToLink]) The transitive set of CC native
                 libraries required by the target.""",

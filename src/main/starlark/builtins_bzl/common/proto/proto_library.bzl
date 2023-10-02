@@ -16,10 +16,12 @@
 Definition of proto_library rule.
 """
 
-load(":common/proto/proto_semantics.bzl", "semantics")
-load(":common/proto/proto_common.bzl", "get_import_path", proto_common = "proto_common_do_not_use")
-load(":common/proto/proto_info.bzl", "ProtoInfo")
 load(":common/paths.bzl", "paths")
+load(":common/proto/proto_common.bzl", "toolchains", proto_common = "proto_common_do_not_use")
+load(":common/proto/proto_info.bzl", "ProtoInfo")
+load(":common/proto/proto_semantics.bzl", "semantics")
+
+PackageSpecificationInfo = _builtins.toplevel.PackageSpecificationInfo
 
 def _check_srcs_package(target_package, srcs):
     """Check that .proto files in sources are from the same package.
@@ -70,7 +72,7 @@ def _proto_library_impl(ctx):
     strip_import_prefix = _get_strip_import_prefix(ctx)
     check_for_reexport = deps + exports if not srcs else exports
     for proto in check_for_reexport:
-        if hasattr(proto, "allow_exports") and not proto.allow_exports.isAvailableFor(ctx.label):
+        if hasattr(proto, "allow_exports") and not proto.allow_exports[PackageSpecificationInfo].contains(ctx.label):
             fail("proto_library '%s' can't be reexported in package '//%s'" % (proto.direct_descriptor_set.owner, ctx.label.package))
 
     proto_path, virtual_srcs = _process_srcs(ctx, srcs, import_prefix, strip_import_prefix)
@@ -177,7 +179,12 @@ def _write_descriptor_set(ctx, proto_info, deps, exports, descriptor_set):
         else:
             strict_importable_sources = None
         if strict_importable_sources:
-            args.add_joined("--direct_dependencies", strict_importable_sources, map_each = get_import_path, join_with = ":")
+            args.add_joined(
+                "--direct_dependencies",
+                strict_importable_sources,
+                map_each = proto_common.get_import_path,
+                join_with = ":",
+            )
             # Example: `--direct_dependencies a.proto:b.proto`
 
         else:
@@ -195,16 +202,28 @@ def _write_descriptor_set(ctx, proto_info, deps, exports, descriptor_set):
             # This line is necessary to trigger the check.
             args.add("--allowed_public_imports=")
         else:
-            args.add_joined("--allowed_public_imports", public_import_protos, map_each = get_import_path, join_with = ":")
-    proto_lang_toolchain_info = proto_common.ProtoLangToolchainInfo(
-        out_replacement_format_flag = "--descriptor_set_out=%s",
-        output_files = "single",
-        mnemonic = "GenProtoDescriptorSet",
-        progress_message = "Generating Descriptor Set proto_library %{label}",
-        proto_compiler = ctx.executable._proto_compiler,
-        protoc_opts = ctx.fragments.proto.experimental_protoc_opts,
-        plugin = None,
-    )
+            args.add_joined(
+                "--allowed_public_imports",
+                public_import_protos,
+                map_each = proto_common.get_import_path,
+                join_with = ":",
+            )
+    if toolchains.INCOMPATIBLE_ENABLE_PROTO_TOOLCHAIN_RESOLUTION:
+        toolchain = ctx.toolchains[semantics.PROTO_TOOLCHAIN]
+        if not toolchain:
+            fail("Protocol compiler toolchain could not be resolved.")
+        proto_lang_toolchain_info = toolchain.proto
+    else:
+        proto_lang_toolchain_info = proto_common.ProtoLangToolchainInfo(
+            out_replacement_format_flag = "--descriptor_set_out=%s",
+            output_files = "single",
+            mnemonic = "GenProtoDescriptorSet",
+            progress_message = "Generating Descriptor Set proto_library %{label}",
+            proto_compiler = ctx.executable._proto_compiler,
+            protoc_opts = ctx.fragments.proto.experimental_protoc_opts,
+            plugin = None,
+        )
+
     proto_common.compile(
         ctx.actions,
         proto_info,
@@ -216,7 +235,7 @@ def _write_descriptor_set(ctx, proto_info, deps, exports, descriptor_set):
 
 proto_library = rule(
     _proto_library_impl,
-    attrs = dict({
+    attrs = {
         "srcs": attr.label_list(
             allow_files = [".proto", ".protodevel"],
             flags = ["DIRECT_COMPILE_TIME_INPUT"],
@@ -230,21 +249,23 @@ proto_library = rule(
         "strip_import_prefix": attr.string(default = "/"),
         "allow_exports": attr.label(
             cfg = "exec",
-            providers = ["PackageSpecificationProvider"],
+            providers = [PackageSpecificationInfo],
         ),
         "data": attr.label_list(
             allow_files = True,
             flags = ["SKIP_CONSTRAINTS_OVERRIDE"],
         ),
         "licenses": attr.license() if hasattr(attr, "license") else attr.string_list(),
+    } | toolchains.if_legacy_toolchain({
         "_proto_compiler": attr.label(
             cfg = "exec",
             executable = True,
             allow_files = True,
             default = configuration_field("proto", "proto_compiler"),
         ),
-    }, **semantics.EXTRA_ATTRIBUTES),
+    }) | semantics.EXTRA_ATTRIBUTES,
     fragments = ["proto"] + semantics.EXTRA_FRAGMENTS,
     provides = [ProtoInfo],
     exec_groups = semantics.EXEC_GROUPS,
+    toolchains = toolchains.use_toolchain(semantics.PROTO_TOOLCHAIN),
 )

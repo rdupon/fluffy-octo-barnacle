@@ -15,10 +15,12 @@
 package com.google.devtools.build.lib.remote;
 
 import static com.google.common.base.Strings.isNullOrEmpty;
+import static com.google.devtools.build.lib.remote.util.DigestUtil.isOldStyleDigestFunction;
 
 import build.bazel.remote.execution.v2.ActionCacheGrpc;
 import build.bazel.remote.execution.v2.ActionCacheGrpc.ActionCacheFutureStub;
 import build.bazel.remote.execution.v2.ActionResult;
+import build.bazel.remote.execution.v2.CacheCapabilities;
 import build.bazel.remote.execution.v2.ContentAddressableStorageGrpc;
 import build.bazel.remote.execution.v2.ContentAddressableStorageGrpc.ContentAddressableStorageFutureStub;
 import build.bazel.remote.execution.v2.Digest;
@@ -260,6 +262,16 @@ public class GrpcCacheClient implements RemoteCacheClient, MissingDigestsFinder 
   }
 
   @Override
+  public CacheCapabilities getCacheCapabilities() throws IOException {
+    return channel.getServerCapabilities().getCacheCapabilities();
+  }
+
+  @Override
+  public ListenableFuture<String> getAuthority() {
+    return channel.withChannelFuture(ch -> Futures.immediateFuture(ch.authority()));
+  }
+
+  @Override
   public ListenableFuture<CachedActionResult> downloadActionResult(
       RemoteActionExecutionContext context, ActionKey actionKey, boolean inlineOutErr) {
     GetActionResultRequest request =
@@ -352,14 +364,6 @@ public class GrpcCacheClient implements RemoteCacheClient, MissingDigestsFinder 
         StatusRuntimeException.class,
         (e) -> Futures.immediateFailedFuture(new IOException(e)),
         MoreExecutors.directExecutor());
-  }
-
-  private static boolean isOldStyleDigestFunction(DigestFunction.Value digestFunction) {
-    // Old-style digest functions (SHA256, etc) are distinguishable by the length
-    // of their hash alone and do not require extra specification, but newer
-    // digest functions (which may have the same length hashes as the older
-    // functions!) must be explicitly specified in the upload resource name.
-    return digestFunction.getNumber() <= 7;
   }
 
   public static String getResourceName(
@@ -521,5 +525,9 @@ public class GrpcCacheClient implements RemoteCacheClient, MissingDigestsFinder 
 
   Retrier getRetrier() {
     return this.retrier;
+  }
+
+  public ReferenceCountedChannel getChannel() {
+    return channel;
   }
 }

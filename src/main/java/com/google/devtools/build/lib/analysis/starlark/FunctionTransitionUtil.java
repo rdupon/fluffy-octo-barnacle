@@ -32,13 +32,13 @@ import com.google.devtools.build.lib.analysis.config.FragmentOptions;
 import com.google.devtools.build.lib.analysis.config.OptionInfo;
 import com.google.devtools.build.lib.analysis.config.StarlarkDefinedConfigTransition;
 import com.google.devtools.build.lib.analysis.config.StarlarkDefinedConfigTransition.ValidationException;
+import com.google.devtools.build.lib.analysis.test.TestConfiguration.TestOptions;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.LabelSyntaxException;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
 import com.google.devtools.build.lib.packages.StructImpl;
 import com.google.devtools.common.options.OptionDefinition;
-import com.google.devtools.common.options.OptionMetadataTag;
 import com.google.devtools.common.options.OptionsParsingException;
 import java.lang.reflect.Field;
 import java.util.HashSet;
@@ -156,6 +156,15 @@ public final class FunctionTransitionUtil {
     // Propagate Starlark options from the source config:
     // TODO(b/288258583) don't automatically propagate Starlark options.
     defaultBuilder.addStarlarkOptions(fromOptions.getStarlarkOptions());
+    // Hard-code TestConfiguration.getExec() for now, which clones the source options.
+    // TODO(b/295936652): handle this directly in Starlark. This has two complications:
+    //  1: --trim_test_configuration means the flags may not exist. Starlark logic needs to handle
+    //     that possibility.
+    //  2: --runs_per_test has a non-Starlark readable type.
+    if (fromOptions.contains(TestOptions.class)) {
+      defaultBuilder.removeFragmentOptions(TestOptions.class);
+      defaultBuilder.addFragmentOptions(fromOptions.get(TestOptions.class));
+    }
     // Propagate --define values from the source config:
     // TODO(b/288258583) don't automatically propagate --defines.
     BuildOptions ans = defaultBuilder.build();
@@ -424,9 +433,7 @@ public final class FunctionTransitionUtil {
             }
             field.set(toOptions.get(optionInfo.getOptionClass()), convertedValue);
 
-            if (!optionInfo.hasOptionMetadataTag(OptionMetadataTag.EXPLICIT_IN_OUTPUT_PATH)) {
-              convertedAffectedOptions.add(optionKey);
-            }
+            convertedAffectedOptions.add(optionKey);
           }
 
         } catch (IllegalArgumentException e) {
@@ -486,9 +493,6 @@ public final class FunctionTransitionUtil {
     BuildOptions.OptionsDiff diff = BuildOptions.diff(toOptions, baselineOptions);
     Stream<String> diffNative =
         diff.getFirst().keySet().stream()
-            .filter(
-                optionDef ->
-                    !optionDef.hasOptionMetadataTag(OptionMetadataTag.EXPLICIT_IN_OUTPUT_PATH))
             .map(option -> COMMAND_LINE_OPTION_PREFIX + option.getOptionName());
     // Note: getChangedStarlarkOptions includes all changed options, added options and removed
     //   options between baselineOptions and toOptions. This is necessary since there is no current

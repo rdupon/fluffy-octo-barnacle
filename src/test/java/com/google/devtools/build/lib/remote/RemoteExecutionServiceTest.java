@@ -59,6 +59,7 @@ import com.google.common.util.concurrent.SettableFuture;
 import com.google.devtools.build.lib.actions.ActionInput;
 import com.google.devtools.build.lib.actions.ActionInputHelper;
 import com.google.devtools.build.lib.actions.ActionInputMap;
+import com.google.devtools.build.lib.actions.ActionOutputDirectoryHelper;
 import com.google.devtools.build.lib.actions.ActionUploadFinishedEvent;
 import com.google.devtools.build.lib.actions.ActionUploadStartedEvent;
 import com.google.devtools.build.lib.actions.Artifact;
@@ -1839,11 +1840,12 @@ public class RemoteExecutionServiceTest {
 
     assertThat(eventHandler.getPosts())
         .containsAtLeast(
-            ActionUploadStartedEvent.create(spawn.getResourceOwner(), "cas/" + digest.getHash()),
-            ActionUploadFinishedEvent.create(spawn.getResourceOwner(), "cas/" + digest.getHash()),
-            ActionUploadStartedEvent.create(spawn.getResourceOwner(), "ac/" + action.getActionId()),
+            ActionUploadStartedEvent.create(spawn.getResourceOwner(), Store.CAS, digest),
+            ActionUploadFinishedEvent.create(spawn.getResourceOwner(), Store.CAS, digest),
+            ActionUploadStartedEvent.create(
+                spawn.getResourceOwner(), Store.AC, action.getActionKey().getDigest()),
             ActionUploadFinishedEvent.create(
-                spawn.getResourceOwner(), "ac/" + action.getActionId()));
+                spawn.getResourceOwner(), Store.AC, action.getActionKey().getDigest()));
   }
 
   @Test
@@ -2269,6 +2271,7 @@ public class RemoteExecutionServiceTest {
             execRoot,
             tempPathGenerator,
             remoteOutputChecker,
+            ActionOutputDirectoryHelper.createForTesting(),
             OutputPermissions.READONLY);
 
     var actionFileSystem =

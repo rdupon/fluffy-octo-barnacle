@@ -28,6 +28,7 @@ public enum ProfilerTask {
   ACTION_RELEASE("action resource release", Threshold.TEN_MILLIS),
   ACTION_UPDATE("update action information", Threshold.TEN_MILLIS),
   ACTION_COMPLETE("complete action execution"),
+  BZLMOD("bazel module processing"),
   INFO("general information"),
   CREATE_PACKAGE("package creation"),
   REMOTE_EXECUTION("remote action execution"),
@@ -42,6 +43,7 @@ public enum ProfilerTask {
   REMOTE_QUEUE("Remote execution queuing time", Threshold.FIFTY_MILLIS),
   REMOTE_SETUP("Remote execution setup", Threshold.FIFTY_MILLIS),
   FETCH("Remote execution file fetching", Threshold.FIFTY_MILLIS),
+  LOCAL_PROCESS_TIME("Local execution process wall time", Threshold.FIFTY_MILLIS),
   VFS_STAT("VFS stat", Threshold.TEN_MILLIS, /* collectsSlowestInstances= */ true),
   VFS_DIR("VFS readdir", Threshold.TEN_MILLIS, /* collectsSlowestInstances= */ true),
   VFS_READLINK("VFS readlink", Threshold.TEN_MILLIS, /* collectsSlowestInstances= */ true),
@@ -94,6 +96,7 @@ public enum ProfilerTask {
   CREDENTIAL_HELPER("calling credential helper"),
   PRESSURE_STALL_IO("I/O pressure stall level"),
   PRESSURE_STALL_MEMORY("Memory pressure stall level"),
+  CONFLICT_CHECK("Conflict checking"),
   DYNAMIC_LOCK("Acquiring dynamic execution output lock", Threshold.FIFTY_MILLIS),
   UNKNOWN("Unknown event");
 

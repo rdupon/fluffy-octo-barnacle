@@ -314,7 +314,7 @@ public final class StarlarkRepositoryContextTest {
     context.createFile(
         context.path("my.patch"), "--- foo\n+++ foo\n" + ONE_LINE_PATCH, false, true, thread);
     context.patch(patchFile, StarlarkInt.of(0), thread);
-    testOutputFile(foo.getPath(), String.format("line one%nline two%n"));
+    testOutputFile(foo.getPath(), "line one\nline two\n");
   }
 
   @Test
@@ -376,15 +376,8 @@ public final class StarlarkRepositoryContextTest {
           .hasMessageThat()
           .isEqualTo(
               "Error applying patch /outputDir/my.patch: in patch applied to "
-                  + "/outputDir/foo: Incorrect Chunk: the chunk content doesn't match the target\n"
-                  + "**Original Position**: 1\n"
-                  + "\n"
-                  + "**Original Content**:\n"
-                  + "line one\n"
-                  + "\n"
-                  + "**Revised Content**:\n"
-                  + "line one\n"
-                  + "line two\n");
+                  + "/outputDir/foo: could not apply patch due to"
+                  + " CONTENT_DOES_NOT_MATCH_TARGET");
     }
   }
 

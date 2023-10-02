@@ -36,10 +36,8 @@ import com.google.devtools.build.lib.profiler.Profiler;
 import com.google.devtools.build.lib.profiler.ProfilerTask;
 import com.google.devtools.build.lib.profiler.SilentCloseable;
 import com.google.devtools.build.lib.rules.repository.NeedsSkyframeRestartException;
-import com.google.devtools.build.lib.rules.repository.RepositoryDelegatorFunction;
 import com.google.devtools.build.lib.rules.repository.RepositoryDirectoryValue;
 import com.google.devtools.build.lib.rules.repository.RepositoryFunction;
-import com.google.devtools.build.lib.rules.repository.ResolvedHashesValue;
 import com.google.devtools.build.lib.rules.repository.WorkspaceFileHelper;
 import com.google.devtools.build.lib.runtime.ProcessWrapper;
 import com.google.devtools.build.lib.runtime.RepositoryRemoteExecutor;
@@ -54,7 +52,6 @@ import com.google.devtools.build.skyframe.SkyFunctionException.Transience;
 import com.google.devtools.build.skyframe.SkyKey;
 import java.io.IOException;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import javax.annotation.Nullable;
@@ -112,6 +109,7 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
       // false is the safe thing to do.
       return false;
     }
+
     return describeSemantics(starlarkSemantics).equals(markerData.get(SEMANTICS));
   }
 
@@ -158,7 +156,7 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
               () -> {
                 try {
                   return fetchInternal(
-                      rule, outputDirectory, directories, workerEnv, markerData, key);
+                      rule, outputDirectory, directories, workerEnv, state.markerData, key);
                 } finally {
                   state.signalQueue.put(Signal.DONE);
                 }
@@ -174,7 +172,9 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
         return null;
       case DONE:
         try {
-          return workerFuture.get();
+          RepositoryDirectoryValue.Builder result = workerFuture.get();
+          markerData.putAll(state.markerData);
+          return result;
         } catch (ExecutionException e) {
           Throwables.throwIfInstanceOf(e.getCause(), RepositoryFunctionException.class);
           Throwables.throwIfUnchecked(e.getCause());
@@ -222,18 +222,6 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
     markerData.put(SEMANTICS, describeSemantics(starlarkSemantics));
     markerData.put("ARCH:", CPU.getCurrent().getCanonicalName());
 
-    Set<String> verificationRules =
-        RepositoryDelegatorFunction.OUTPUT_VERIFICATION_REPOSITORY_RULES.get(env);
-    if (env.valuesMissing()) {
-      return null;
-    }
-    ResolvedHashesValue resolvedHashesValue =
-        (ResolvedHashesValue) env.getValue(ResolvedHashesValue.key());
-    if (env.valuesMissing()) {
-      return null;
-    }
-    Map<String, String> resolvedHashes = checkNotNull(resolvedHashesValue).getHashes();
-
     PathPackageLocator packageLocator = PrecomputedValue.PATH_PACKAGE_LOCATOR.get(env);
     if (env.valuesMissing()) {
       return null;
@@ -250,15 +238,9 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
       StarlarkThread thread = new StarlarkThread(mu, starlarkSemantics);
       thread.setPrintHandler(Event.makeDebugPrintHandler(env.getListener()));
 
-      // The fetch phase does not need the tools repository
-      // or the fragment map because it happens before analysis.
       new BazelStarlarkContext(
               BazelStarlarkContext.Phase.LOADING, // ("fetch")
-              /*toolsRepository=*/ null,
-              /*fragmentNameToClass=*/ null,
-              new SymbolGenerator<>(key),
-              /*analysisRuleLabel=*/ null,
-              /*networkAllowlistForTests=*/ null)
+              new SymbolGenerator<>(key))
           .storeInThread(thread);
 
       StarlarkRepositoryContext starlarkRepositoryContext =
@@ -325,20 +307,6 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
         markerData.put("FILE:" + entry.getKey(), entry.getValue());
       }
 
-      String ruleClass =
-          rule.getRuleClassObject().getRuleDefinitionEnvironmentLabel() + "%" + rule.getRuleClass();
-      if (verificationRules.contains(ruleClass)) {
-        String expectedHash = resolvedHashes.get(rule.getName());
-        if (expectedHash != null) {
-          String actualHash = resolved.getDirectoryDigest(syscallCache);
-          if (!expectedHash.equals(actualHash)) {
-            throw new RepositoryFunctionException(
-                new IOException(
-                    rule + " failed to create a directory with expected hash " + expectedHash),
-                Transience.PERSISTENT);
-          }
-        }
-      }
       env.getListener().post(resolved);
     } catch (NeedsSkyframeRestartException e) {
       // A dependency is missing, cleanup and returns null
@@ -377,8 +345,8 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
   }
 
   @SuppressWarnings("unchecked")
-  private static Iterable<String> getEnviron(Rule rule) {
-    return (Iterable<String>) rule.getAttr("$environ");
+  private static ImmutableSet<String> getEnviron(Rule rule) {
+    return ImmutableSet.copyOf((Iterable<String>) rule.getAttr("$environ"));
   }
 
   @Override

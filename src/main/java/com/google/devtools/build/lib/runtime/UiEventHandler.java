@@ -527,7 +527,7 @@ public final class UiEventHandler implements EventHandler {
       buildRunning = true;
     }
     maybeAddDate();
-    stateTracker.buildStarted();
+    stateTracker.mainRepoMappingComputationStarted();
     // As a new phase started, inform immediately.
     ignoreRefreshLimitOnce();
     refresh();
@@ -613,6 +613,9 @@ public final class UiEventHandler implements EventHandler {
         return;
       }
       buildRunning = false;
+      // Have to set this, otherwise there's a lingering "checking cached actions" message for the
+      // `mod` command, which doesn't even run any actions.
+      stateTracker.setBuildComplete();
     }
     stopUpdateThread();
     synchronized (this) {

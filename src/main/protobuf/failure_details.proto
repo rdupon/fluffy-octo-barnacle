@@ -278,7 +278,7 @@ message BuildProgress {
         [(metadata) = { exit_code: 45 }];
     BES_UPLOAD_RETRY_LIMIT_EXCEEDED_FAILURE = 17
         [(metadata) = { exit_code: 38 }];
-    reserved 1, 2, 18; // For internal use
+    reserved 1, 2, 18, 20; // For internal use
   }
   Code code = 1;
   // Additional data could include the build progress upload endpoint.
@@ -458,6 +458,7 @@ message Execution {
     UNEXPECTED_EXCEPTION = 37 [(metadata) = { exit_code: 1 }];
     reserved 38;
     SOURCE_INPUT_IO_EXCEPTION = 39 [(metadata) = { exit_code: 1 }];
+    SYMLINK_TREE_DELETION_IO_EXCEPTION = 40 [(metadata) = { exit_code: 36 }];
   }
 
   Code code = 1;
@@ -1032,6 +1033,7 @@ message ActionRewinding {
     ACTION_REWINDING_UNKNOWN = 0 [(metadata) = { exit_code: 37 }];
     LOST_INPUT_TOO_MANY_TIMES = 1 [(metadata) = { exit_code: 1 }];
     LOST_INPUT_IS_SOURCE = 2 [(metadata) = { exit_code: 1 }];
+    REWIND_LOST_INPUTS_PREREQ_UNMET = 3 [(metadata) = { exit_code: 2 }];
   }
 
   Code code = 1;

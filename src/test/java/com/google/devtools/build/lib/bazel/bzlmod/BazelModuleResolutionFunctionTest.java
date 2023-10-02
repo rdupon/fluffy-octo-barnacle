@@ -115,6 +115,7 @@ public class BazelModuleResolutionFunctionTest extends FoundationTestCase {
                 .put(SkyFunctions.BAZEL_DEP_GRAPH, new BazelDepGraphFunction())
                 .put(SkyFunctions.BAZEL_LOCK_FILE, new BazelLockFileFunction(rootDirectory))
                 .put(SkyFunctions.BAZEL_MODULE_RESOLUTION, new BazelModuleResolutionFunction())
+                .put(SkyFunctions.REPO_SPEC, new RepoSpecFunction(registryFactory))
                 .put(
                     SkyFunctions.CLIENT_ENVIRONMENT_VARIABLE,
                     new ClientEnvironmentFunction(new AtomicReference<>(ImmutableMap.of())))
@@ -161,7 +162,7 @@ public class BazelModuleResolutionFunctionTest extends FoundationTestCase {
 
     assertThat(result.hasError()).isTrue();
     assertContainsEvent(
-        "Bazel version 5.1.4 is not compatible with module \"mod@1.0\" (bazel_compatibility:"
+        "Bazel version 5.1.4 is not compatible with module \"<root>\" (bazel_compatibility:"
             + " [>5.1.0, <5.1.4])");
   }
 
@@ -179,7 +180,7 @@ public class BazelModuleResolutionFunctionTest extends FoundationTestCase {
 
     assertThat(result.hasError()).isFalse();
     assertContainsEvent(
-        "Bazel version 5.1.4 is not compatible with module \"mod@1.0\" (bazel_compatibility:"
+        "Bazel version 5.1.4 is not compatible with module \"<root>\" (bazel_compatibility:"
             + " [>5.1.0, <5.1.4])");
   }
 
@@ -197,7 +198,7 @@ public class BazelModuleResolutionFunctionTest extends FoundationTestCase {
 
     assertThat(result.hasError()).isFalse();
     assertDoesNotContainEvent(
-        "Bazel version 5.1.4 is not compatible with module \"mod@1.0\" (bazel_compatibility:"
+        "Bazel version 5.1.4 is not compatible with module \"<root>\" (bazel_compatibility:"
             + " [>5.1.0, <5.1.4])");
   }
 
@@ -224,6 +225,36 @@ public class BazelModuleResolutionFunctionTest extends FoundationTestCase {
     assertContainsEvent(
         "Bazel version 5.1.5rc444 is not compatible with module \"b@1.0\" (bazel_compatibility:"
             + " [<=5.1.4, -5.1.2])");
+  }
+
+  @Test
+  public void testRcIsCompatibleWithReleaseRequirement() throws Exception {
+    scratch.file(
+        rootDirectory.getRelative("MODULE.bazel").getPathString(),
+        "module(name='mod', version='1.0', bazel_compatibility=['>=6.4.0'])");
+
+    embedBazelVersion("6.4.0rc1");
+    EvaluationResult<BazelModuleResolutionValue> result =
+        evaluator.evaluate(ImmutableList.of(BazelModuleResolutionValue.KEY), evaluationContext);
+
+    assertThat(result.hasError()).isFalse();
+  }
+
+  @Test
+  public void testPrereleaseIsNotCompatibleWithReleaseRequirement() throws Exception {
+    scratch.file(
+        rootDirectory.getRelative("MODULE.bazel").getPathString(),
+        "module(name='mod', version='1.0', bazel_compatibility=['>=6.4.0'])");
+
+    embedBazelVersion("6.4.0-pre-1");
+    reporter.removeHandler(failFastHandler);
+    EvaluationResult<BazelModuleResolutionValue> result =
+        evaluator.evaluate(ImmutableList.of(BazelModuleResolutionValue.KEY), evaluationContext);
+
+    assertThat(result.hasError()).isTrue();
+    assertContainsEvent(
+        "Bazel version 6.4.0-pre-1 is not compatible with module \"<root>\" (bazel_compatibility:"
+            + " [>=6.4.0])");
   }
 
   private void embedBazelVersion(String version) {

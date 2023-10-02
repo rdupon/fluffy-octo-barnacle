@@ -14,12 +14,12 @@
 
 """Implementation of cc_shared_library"""
 
+load(":common/cc/cc_common.bzl", "cc_common")
 load(":common/cc/cc_helper.bzl", "cc_helper")
+load(":common/cc/cc_info.bzl", "CcInfo")
+load(":common/cc/cc_shared_library_hint_info.bzl", "CcSharedLibraryHintInfo")
 load(":common/cc/semantics.bzl", "semantics")
 load(":common/proto/proto_info.bzl", "ProtoInfo")
-load(":common/cc/cc_info.bzl", "CcInfo")
-load(":common/cc/cc_common.bzl", "cc_common")
-load(":common/cc/cc_shared_library_hint_info.bzl", "CcSharedLibraryHintInfo")
 
 # TODO(#5200): Add export_define to library_to_link and cc_library
 
@@ -706,7 +706,6 @@ def _cc_shared_library_impl(ctx):
         linking_contexts = [linking_context],
         user_link_flags = user_link_flags,
         additional_inputs = additional_inputs,
-        grep_includes = ctx.executable._grep_includes,
         name = ctx.label.name,
         output_type = "dynamic_library",
         main_output = main_output,
@@ -733,7 +732,10 @@ def _cc_shared_library_impl(ctx):
         # precompiled_dynamic_library.dynamic_library could be None if the library to link just contains
         # an interface library which is valid if the actual library is obtained from the system.
         if precompiled_dynamic_library.dynamic_library != None:
-            precompiled_only_dynamic_libraries_runfiles.append(precompiled_dynamic_library.dynamic_library)
+            if precompiled_dynamic_library.resolved_symlink_dynamic_library != None:
+                precompiled_only_dynamic_libraries_runfiles.append(precompiled_dynamic_library.resolved_symlink_dynamic_library)
+            else:
+                precompiled_only_dynamic_libraries_runfiles.append(precompiled_dynamic_library.dynamic_library)
 
     runfiles = runfiles.merge(ctx.runfiles(files = precompiled_only_dynamic_libraries_runfiles))
 
@@ -833,16 +835,9 @@ cc_shared_library = rule(
         "user_link_flags": attr.string_list(),
         "_def_parser": semantics.get_def_parser(),
         "_cc_toolchain": attr.label(default = "@" + semantics.get_repo() + "//tools/cpp:current_cc_toolchain"),
-        "_grep_includes": attr.label(
-            allow_files = True,
-            executable = True,
-            cfg = "exec",
-            default = Label("@" + semantics.get_repo() + "//tools/cpp:grep-includes"),
-        ),
     },
     toolchains = cc_helper.use_cpp_toolchain(),
     fragments = ["cpp"] + semantics.additional_fragments(),
-    incompatible_use_toolchain_transition = True,
 )
 
 for_testing_dont_use_check_if_target_under_path = _check_if_target_under_path

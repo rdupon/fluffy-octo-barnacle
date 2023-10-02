@@ -15,20 +15,13 @@ package com.google.devtools.build.skyframe;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Sets;
 import com.google.devtools.build.lib.concurrent.AbstractQueueVisitor;
 import com.google.devtools.build.lib.events.ExtendedEventHandler;
-import com.google.devtools.build.lib.profiler.AutoProfiler;
-import com.google.devtools.build.lib.profiler.GoogleAutoProfilerUtils;
 import com.google.devtools.build.lib.profiler.Profiler;
 import com.google.devtools.build.lib.profiler.SilentCloseable;
 import com.google.devtools.build.skyframe.Differencer.Diff;
-import com.google.devtools.build.skyframe.QueryableGraph.Reason;
-import java.time.Duration;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
 /**
@@ -37,7 +30,8 @@ import javax.annotation.Nullable;
  * the returned graphs. However, it is allowed to access the graph from multiple threads as long as
  * that does not happen in parallel with an {@link #evaluate} call.
  *
- * <p>This memoizing evaluator uses a monotonically increasing {@link IntVersion}.
+ * <p>This memoizing evaluator uses a monotonically increasing {@link IntVersion} for incremental
+ * evaluations and {@link Version#constant} for non-incremental evaluations.
  */
 public final class InMemoryMemoizingEvaluator
     extends AbstractIncrementalInMemoryMemoizingEvaluator {
@@ -89,44 +83,19 @@ public final class InMemoryMemoizingEvaluator
             : InMemoryGraph.createEdgeless(usePooledInterning);
   }
 
-  private static final Duration MIN_TIME_TO_LOG_DELETION = Duration.ofMillis(10);
-
-  @Override
-  public void delete(Predicate<SkyKey> deletePredicate) {
-    try (AutoProfiler ignored =
-        GoogleAutoProfilerUtils.logged("deletion marking", MIN_TIME_TO_LOG_DELETION)) {
-      Set<SkyKey> toDelete = Sets.newConcurrentHashSet();
-      graph.parallelForEach(
-          e -> {
-            if (e.isDirty() || deletePredicate.test(e.getKey())) {
-              toDelete.add(e.getKey());
-            }
-          });
-      valuesToDelete.addAll(toDelete);
-    }
-  }
-
-  @Override
-  public void deleteDirty(long versionAgeLimit) {
-    Preconditions.checkArgument(versionAgeLimit >= 0, versionAgeLimit);
-    Version threshold = IntVersion.of(lastGraphVersion.getVal() - versionAgeLimit);
-    valuesToDelete.addAll(
-        Sets.filter(
-            progressReceiver.getUnenqueuedDirtyKeys(),
-            skyKey -> {
-              NodeEntry entry = graph.get(null, Reason.OTHER, skyKey);
-              Preconditions.checkNotNull(entry, skyKey);
-              Preconditions.checkState(entry.isDirty(), skyKey);
-              return entry.getVersion().atMost(threshold);
-            }));
-  }
-
   @Override
   public <T extends SkyValue> EvaluationResult<T> evaluate(
       Iterable<? extends SkyKey> roots, EvaluationContext evaluationContext)
       throws InterruptedException {
     // NOTE: Performance critical code. See bug "Null build performance parity".
-    IntVersion graphVersion = lastGraphVersion == null ? IntVersion.of(0) : lastGraphVersion.next();
+    Version graphVersion;
+    if (!keepEdges) {
+      graphVersion = Version.constant();
+    } else if (lastGraphVersion == null) {
+      graphVersion = IntVersion.of(0);
+    } else {
+      graphVersion = lastGraphVersion.next();
+    }
     setAndCheckEvaluateState(true, roots);
     try {
       // Mark for removal any inflight nodes from the previous evaluation.
@@ -181,7 +150,9 @@ public final class InMemoryMemoizingEvaluator
           .setWalkableGraph(new DelegatingWalkableGraph(graph))
           .build();
     } finally {
-      lastGraphVersion = graphVersion;
+      if (keepEdges) {
+        lastGraphVersion = (IntVersion) graphVersion;
+      }
       setAndCheckEvaluateState(false, roots);
     }
   }

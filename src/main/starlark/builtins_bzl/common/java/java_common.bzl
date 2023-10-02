@@ -31,6 +31,10 @@ load(":common/java/java_helper.bzl", "helper")
 
 _java_common_internal = _builtins.internal.java_common_internal_do_not_use
 JavaToolchainInfo = _java_common_internal.JavaToolchainInfo
+JavaRuntimeClasspathInfo = provider(
+    "Provider for the runtime classpath contributions of a Java binary.",
+    fields = ["runtime_classpath"],
+)
 
 def _compile(
         ctx,
@@ -169,6 +173,21 @@ def _default_javac_opts(java_toolchain):
     """
     return _java_common_internal.default_javac_opts(java_toolchain = java_toolchain)
 
+# temporary for migration
+def _default_javac_opts_depset(java_toolchain):
+    """Experimental! Get default javacopts from a java toolchain
+
+    Args:
+        java_toolchain: (JavaToolchainInfo) the toolchain from which to get the javac options.
+
+    Returns:
+        (depset[str]) A depset of javac options that should be tokenized before passing to javac
+    """
+    return _java_common_internal.default_javac_opts(
+        java_toolchain = java_toolchain,
+        as_depset = True,
+    )
+
 def _merge(providers):
     """Merges the given providers into a single JavaInfo.
 
@@ -276,12 +295,14 @@ def _make_java_common():
         "stamp_jar": _stamp_jar,
         "pack_sources": _pack_sources,
         "default_javac_opts": _default_javac_opts,
+        "default_javac_opts_depset": _default_javac_opts_depset,
         "merge": _merge,
         "make_non_strict": _make_non_strict,
         "JavaPluginInfo": JavaPluginInfo,
         "JavaToolchainInfo": JavaToolchainInfo,
         "JavaRuntimeInfo": _java_common_internal.JavaRuntimeInfo,
         "BootClassPathInfo": _java_common_internal.BootClassPathInfo,
+        "JavaRuntimeClasspathInfo": JavaRuntimeClasspathInfo,
         "experimental_java_proto_library_default_has_services": _java_common_internal.experimental_java_proto_library_default_has_services,
     }
     if _java_common_internal._google_legacy_api_enabled():

@@ -16,30 +16,31 @@
 
 """
 
+load("//:distdir.bzl", "dist_http_archive", "repo_cache_tar")
+load("//:distdir_deps.bzl", "DIST_ARCHIVE_REPOS")
 load("//:repositories.bzl", "embedded_jdk_repositories")
-load("//:distdir.bzl", "dist_http_archive", "dist_http_jar")
-load("//tools/distributions/debian:deps.bzl", "debian_deps")
+load("//src/main/res:winsdk_configure.bzl", "winsdk_configure")
 load("//src/test/shell/bazel:list_source_repository.bzl", "list_source_repository")
+load("//tools/distributions/debian:deps.bzl", "debian_deps")
 
-### Extra dependencies for building Bazel
-
-def _bazel_internal_deps(_ctx):
+### Dependencies for building Bazel
+def _bazel_build_deps(_ctx):
     embedded_jdk_repositories()
     debian_deps()
+    repo_cache_tar(name = "bootstrap_repo_cache", repos = DIST_ARCHIVE_REPOS, dirname = "derived/repository_cache")
 
-bazel_internal_deps = module_extension(implementation = _bazel_internal_deps)
+bazel_build_deps = module_extension(implementation = _bazel_build_deps)
 
-### Extra dependencies for testing Bazel
-
-def _bazel_dev_deps(_ctx):
+### Dependencies for testing Bazel
+def _bazel_test_deps(_ctx):
     list_source_repository(name = "local_bazel_source_list")
+    dist_http_archive(name = "bazelci_rules")
+    winsdk_configure(name = "local_config_winsdk")
 
-bazel_dev_deps = module_extension(implementation = _bazel_dev_deps)
+bazel_test_deps = module_extension(implementation = _bazel_test_deps)
 
-### Extra dependencies for Bazel Android tools
-
+### Dependencies for Bazel Android tools
 def _bazel_android_deps(_ctx):
-    dist_http_jar(name = "android_gmaven_r8")
     dist_http_archive(name = "desugar_jdk_libs")
 
 bazel_android_deps = module_extension(implementation = _bazel_android_deps)

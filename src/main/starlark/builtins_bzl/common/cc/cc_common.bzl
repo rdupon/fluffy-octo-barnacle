@@ -70,7 +70,6 @@ def _link(
         link_deps_statically = True,
         stamp = 0,
         additional_inputs = [],
-        grep_includes = None,
         link_artifact_name_suffix = _UNBOUND,
         never_link = _UNBOUND,
         always_link = _UNBOUND,
@@ -155,7 +154,6 @@ def _link(
         link_deps_statically = link_deps_statically,
         stamp = stamp,
         additional_inputs = additional_inputs,
-        grep_includes = grep_includes,
         link_artifact_name_suffix = link_artifact_name_suffix,
         never_link = never_link,
         always_link = always_link,
@@ -361,17 +359,17 @@ def _create_linking_context(
         libraries_to_link = _UNBOUND,
         user_link_flags = _UNBOUND,
         additional_inputs = _UNBOUND,
-        go_link_c_archive = _UNBOUND):
-    if go_link_c_archive != _UNBOUND:
+        extra_link_time_library = _UNBOUND):
+    if extra_link_time_library != _UNBOUND:
         cc_common_internal.check_private_api(allowlist = _PRIVATE_STARLARKIFICATION_ALLOWLIST)
-    if go_link_c_archive == _UNBOUND:
-        go_link_c_archive = None
+    if extra_link_time_library == _UNBOUND:
+        extra_link_time_library = None
 
     # Usage of libraries_to_link, user_link_flags and additional_inputs are restricted by a flag.
     # Since we cannot do it here, we let the native code to do it.
     kwargs = {
         "linker_inputs": linker_inputs,
-        "go_link_c_archive": go_link_c_archive,
+        "extra_link_time_library": extra_link_time_library,
     }
     if libraries_to_link != _UNBOUND:
         kwargs["libraries_to_link"] = libraries_to_link
@@ -422,14 +420,74 @@ def _create_compilation_context(
         direct_public_headers = [],
         direct_private_headers = [],
         purpose = _UNBOUND,
-        module_map = _UNBOUND):
+        module_map = _UNBOUND,
+        actions = _UNBOUND,
+        label = _UNBOUND,
+        external_includes = _UNBOUND,
+        virtual_to_original_headers = _UNBOUND,
+        dependent_cc_compilation_contexts = _UNBOUND,
+        non_code_inputs = _UNBOUND,
+        loose_hdrs_dirs = _UNBOUND,
+        headers_checking_mode = _UNBOUND,
+        propagate_module_map_to_compile_action = _UNBOUND,
+        pic_header_module = _UNBOUND,
+        header_module = _UNBOUND,
+        separate_module_headers = _UNBOUND,
+        separate_module = _UNBOUND,
+        separate_pic_module = _UNBOUND,
+        add_public_headers_to_modular_headers = _UNBOUND):
     if purpose != _UNBOUND or \
-       module_map != _UNBOUND:
+       module_map != _UNBOUND or \
+       actions != _UNBOUND or \
+       external_includes != _UNBOUND or \
+       virtual_to_original_headers != _UNBOUND or \
+       dependent_cc_compilation_contexts != _UNBOUND or \
+       non_code_inputs != _UNBOUND or \
+       loose_hdrs_dirs != _UNBOUND or \
+       headers_checking_mode != _UNBOUND or \
+       propagate_module_map_to_compile_action != _UNBOUND or \
+       pic_header_module != _UNBOUND or \
+       header_module != _UNBOUND or \
+       separate_module_headers != _UNBOUND or \
+       separate_module != _UNBOUND or \
+       separate_pic_module != _UNBOUND or \
+       add_public_headers_to_modular_headers != _UNBOUND or \
+       label != _UNBOUND:
         cc_common_internal.check_private_api(allowlist = _PRIVATE_STARLARKIFICATION_ALLOWLIST)
     if purpose == _UNBOUND:
         purpose = None
     if module_map == _UNBOUND:
         module_map = None
+    if actions == _UNBOUND:
+        actions = None
+    if label == _UNBOUND:
+        label = None
+    if external_includes == _UNBOUND:
+        external_includes = depset()
+    if virtual_to_original_headers == _UNBOUND:
+        virtual_to_original_headers = depset()
+    if dependent_cc_compilation_contexts == _UNBOUND:
+        dependent_cc_compilation_contexts = []
+    if non_code_inputs == _UNBOUND:
+        non_code_inputs = []
+    if loose_hdrs_dirs == _UNBOUND:
+        loose_hdrs_dirs = []
+    if headers_checking_mode == _UNBOUND:
+        headers_checking_mode = "STRICT"
+    if propagate_module_map_to_compile_action == _UNBOUND:
+        propagate_module_map_to_compile_action = True
+    if pic_header_module == _UNBOUND:
+        pic_header_module = None
+    if header_module == _UNBOUND:
+        header_module = None
+    if separate_module_headers == _UNBOUND:
+        separate_module_headers = []
+    if separate_module == _UNBOUND:
+        separate_module = None
+    if separate_pic_module == _UNBOUND:
+        separate_pic_module = None
+    if add_public_headers_to_modular_headers == _UNBOUND:
+        add_public_headers_to_modular_headers = True
     return cc_common_internal.create_compilation_context(
         headers = headers,
         system_includes = system_includes,
@@ -443,6 +501,21 @@ def _create_compilation_context(
         direct_private_headers = direct_private_headers,
         purpose = purpose,
         module_map = module_map,
+        actions = actions,
+        label = label,
+        external_includes = external_includes,
+        virtual_to_original_headers = virtual_to_original_headers,
+        dependent_cc_compilation_contexts = dependent_cc_compilation_contexts,
+        non_code_inputs = non_code_inputs,
+        loose_hdrs_dirs = loose_hdrs_dirs,
+        headers_checking_mode = headers_checking_mode,
+        propagate_module_map_to_compile_action = propagate_module_map_to_compile_action,
+        pic_header_module = pic_header_module,
+        header_module = header_module,
+        separate_module_headers = separate_module_headers,
+        separate_module = separate_module,
+        separate_pic_module = separate_pic_module,
+        add_public_headers_to_modular_headers = add_public_headers_to_modular_headers,
     )
 
 def _legacy_cc_flags_make_variable_do_not_use(*, cc_toolchain):
@@ -504,7 +577,6 @@ def _create_linking_context_from_compilation_outputs(
         additional_inputs = [],
         disallow_static_libraries = False,
         disallow_dynamic_library = False,
-        grep_includes = None,
         variables_extension = {},
         stamp = _UNBOUND,
         linked_dll_name_suffix = _UNBOUND,
@@ -538,7 +610,6 @@ def _create_linking_context_from_compilation_outputs(
         additional_inputs = additional_inputs,
         disallow_static_libraries = disallow_static_libraries,
         disallow_dynamic_library = disallow_dynamic_library,
-        grep_includes = grep_includes,
         variables_extension = variables_extension,
         stamp = stamp,
         linked_dll_name_suffix = linked_dll_name_suffix,
@@ -555,6 +626,10 @@ def _merge_linking_contexts(*, linking_contexts = []):
 def _check_experimental_cc_shared_library():
     cc_common_internal.check_private_api(allowlist = _PRIVATE_STARLARKIFICATION_ALLOWLIST)
     return cc_common_internal.check_experimental_cc_shared_library()
+
+def _incompatible_disable_objc_library_transition():
+    cc_common_internal.check_private_api(allowlist = _PRIVATE_STARLARKIFICATION_ALLOWLIST)
+    return cc_common_internal.incompatible_disable_objc_library_transition()
 
 def _create_module_map(*, file, name, umbrella_header = None):
     cc_common_internal.check_private_api(allowlist = _PRIVATE_STARLARKIFICATION_ALLOWLIST)
@@ -594,14 +669,12 @@ def _register_linkstamp_compile_action(
         compilation_inputs,
         inputs_for_validation,
         label_replacement,
-        output_replacement,
-        grep_includes = None):
+        output_replacement):
     cc_common_internal.check_private_api(allowlist = _PRIVATE_STARLARKIFICATION_ALLOWLIST)
     return cc_common_internal.register_linkstamp_compile_action(
         actions = actions,
         cc_toolchain = cc_toolchain,
         feature_configuration = feature_configuration,
-        grep_includes = grep_includes,
         source_file = source_file,
         output_file = output_file,
         compilation_inputs = compilation_inputs,
@@ -646,7 +719,6 @@ def _compile(
         variables_extension = {},
         language = None,
         purpose = _UNBOUND,
-        grep_includes = None,
         copts_filter = _UNBOUND,
         separate_module_headers = _UNBOUND,
         non_compilation_additional_inputs = _UNBOUND):
@@ -731,7 +803,6 @@ def _compile(
         variables_extension = variables_extension,
         language = language,
         purpose = purpose,
-        grep_includes = grep_includes,
         copts_filter = copts_filter,
         separate_module_headers = separate_module_headers,
         non_compilation_additional_inputs = non_compilation_additional_inputs,
@@ -792,14 +863,12 @@ def _create_compile_action(
         action_name,
         compilation_context,
         additional_inputs = None,
-        grep_includes = None,
         additional_outputs = []):
     cc_common_internal.check_private_api(allowlist = _CREATE_COMPILE_ACTION_API_ALLOWLISTED_PACKAGES)
     return cc_common_internal.create_compile_action(
         actions = actions,
         cc_toolchain = cc_toolchain,
         feature_configuration = feature_configuration,
-        grep_includes = grep_includes,
         source_file = source_file,
         output_file = output_file,
         variables = variables,
@@ -839,6 +908,7 @@ cc_common = struct(
     merge_cc_infos = _merge_cc_infos,
     create_compilation_context = _create_compilation_context,
     legacy_cc_flags_make_variable_do_not_use = _legacy_cc_flags_make_variable_do_not_use,
+    incompatible_disable_objc_library_transition = _incompatible_disable_objc_library_transition,
     is_cc_toolchain_resolution_enabled_do_not_use = _is_cc_toolchain_resolution_enabled_do_not_use,
     create_cc_toolchain_config_info = _create_cc_toolchain_config_info,
     create_linking_context_from_compilation_outputs = _create_linking_context_from_compilation_outputs,
@@ -856,6 +926,8 @@ cc_common = struct(
     create_lto_backend_artifacts = _create_lto_backend_artifacts,
     # Google internal methods.
     create_cc_launcher_info = _create_cc_launcher_info,
+    # TODO: b/295221112 - Remove after migrating launchers to Starlark flags
+    launcher_provider = _builtins.internal.cc_internal.launcher_provider,
     objcopy = _objcopy,
     objcopy_tool_path = _objcopy_tool_path,
     ld_tool_path = _ld_tool_path,

@@ -5545,7 +5545,8 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
     assertThat(target).isNotNull();
     CcInfo ccInfo = target.get(CcInfo.PROVIDER);
     assertThat(artifactsToStrings(ccInfo.getCcCompilationContext().getDirectPublicHdrs()))
-        .contains("bin third_party/bar/_virtual_includes/starlark_lib/prefix/starlark_lib.h");
+        .contains(
+            "bin third_party/bar/_virtual_includes/starlark_lib_suffix/prefix/starlark_lib.h");
   }
 
   @Test
@@ -5565,7 +5566,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
     assertThat(target).isNotNull();
     CcInfo ccInfo = target.get(CcInfo.PROVIDER);
     assertThat(artifactsToStrings(ccInfo.getCcCompilationContext().getDirectPublicHdrs()))
-        .contains("bin third_party/bar/_virtual_includes/starlark_lib/starlark_lib.h");
+        .contains("bin third_party/bar/_virtual_includes/starlark_lib_suffix/starlark_lib.h");
   }
 
   @Test
@@ -5587,7 +5588,8 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
     assertThat(target).isNotNull();
     CcInfo ccInfo = target.get(CcInfo.PROVIDER);
     assertThat(artifactsToStrings(ccInfo.getCcCompilationContext().getDirectPublicHdrs()))
-        .contains("bin third_party/bar/_virtual_includes/starlark_lib/prefix/starlark_lib.h");
+        .contains(
+            "bin third_party/bar/_virtual_includes/starlark_lib_suffix/prefix/starlark_lib.h");
   }
 
   @Test
@@ -5763,7 +5765,10 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
         bzlFilePath + "/extension.bzl",
         "load('//myinfo:myinfo.bzl', 'MyInfo')",
         "def _cc_aspect_impl(target, ctx):",
-        "    toolchain = ctx.attr._cc_toolchain[cc_common.CcToolchainInfo]",
+        "    if ctx.attr._cc_toolchain:",
+        "      toolchain = ctx.attr._cc_toolchain[cc_common.CcToolchainInfo]",
+        "    else:",
+        "      toolchain = ctx.toolchains['" + TestConstants.CPP_TOOLCHAIN_TYPE + "'].cc",
         "    feature_configuration = cc_common.configure_features(",
         "        ctx = ctx,",
         "        cc_toolchain = toolchain,",
@@ -5795,6 +5800,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
             + " '@bazel_tools//tools/cpp:current_cc_toolchain'),",
         "    },",
         fragments,
+        "    toolchains = ['" + TestConstants.CPP_TOOLCHAIN_TYPE + "']",
         ")",
         "def _cc_starlark_library_impl(ctx):",
         "    dep_compilation_contexts = []",
@@ -5802,7 +5808,10 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
         "    for dep in ctx.attr._deps:",
         "        dep_compilation_contexts.append(dep[CcInfo].compilation_context)",
         "        dep_linking_contexts.append(dep[CcInfo].linking_context)",
-        "    toolchain = ctx.attr._my_cc_toolchain[cc_common.CcToolchainInfo]",
+        "    if ctx.attr._my_cc_toolchain:",
+        "      toolchain = ctx.attr._my_cc_toolchain[cc_common.CcToolchainInfo]",
+        "    else:",
+        "      toolchain = ctx.toolchains['" + TestConstants.CPP_TOOLCHAIN_TYPE + "'].cc",
         "    feature_configuration = cc_common.configure_features(",
         "        ctx = ctx,",
         "        cc_toolchain=toolchain,",
@@ -5866,6 +5875,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
         "          configuration_field(fragment = 'cpp', name = 'cc_toolchain'))",
         "    },",
         fragments,
+        "    toolchains = ['" + TestConstants.CPP_TOOLCHAIN_TYPE + "']",
         ")");
     scratch.file(
         "foo/BUILD",
@@ -5983,13 +5993,6 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
     assertThat(executable).isNotNull();
     Object library = getMyInfoFromTarget(target).getValue("library");
     assertThat(Starlark.isNullOrNone(library)).isTrue();
-  }
-
-  @Test
-  public void testPassGrepIncludesToApiEvenThoughItDoesntDoAnything() throws Exception {
-    setupTestTransitiveLink(scratch, "grep_includes = ctx.executable._grep_includes");
-    ConfiguredTarget target = getConfiguredTarget("//foo:bin");
-    assertThat(target).isNotNull();
   }
 
   @Test
@@ -6366,14 +6369,6 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
       fragments = "    fragments = ['cpp'],";
     }
     scratch.overwriteFile("tools/build_defs/BUILD");
-    /*scratch.overwriteFile("tools/cpp/grep-includes");*/
-    scratch.overwriteFile("tools/cpp/grep_includes/grep-includes.sh");
-    scratch.appendFile(
-        "tools/cpp/grep_includes/BUILD",
-        "sh_binary(",
-        "    name = 'grep-includes',",
-        "    srcs = ['grep-includes.sh'],",
-        ")");
 
     String extensionDirectory = "tools/build_defs";
     if (internalApi) {
@@ -6384,7 +6379,10 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
         extensionDirectory + "/extension.bzl",
         "load('//myinfo:myinfo.bzl', 'MyInfo')",
         "def _cc_bin_impl(ctx):",
-        "    toolchain = ctx.attr._cc_toolchain[cc_common.CcToolchainInfo]",
+        "    if ctx.attr._cc_toolchain:",
+        "      toolchain = ctx.attr._cc_toolchain[cc_common.CcToolchainInfo]",
+        "    else:",
+        "      toolchain = ctx.toolchains['" + TestConstants.CPP_TOOLCHAIN_TYPE + "'].cc",
         "    feature_configuration = cc_common.configure_features(",
         "      ctx = ctx,",
         "      cc_toolchain = toolchain,",
@@ -6418,14 +6416,10 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
         "      'deps': attr.label_list(),",
         "      '_cc_toolchain': attr.label(default =",
         "          configuration_field(fragment = 'cpp', name = 'cc_toolchain')),",
-        "      '_grep_includes': attr.label(",
-        "             executable = True,",
-        "             default = Label('//tools/cpp/grep_includes:grep-includes'),",
-        "             cfg = 'exec'",
-        "       ),",
         "      'additional_outputs': attr.output_list(),",
         "    },",
         fragments,
+        "    toolchains = ['" + TestConstants.CPP_TOOLCHAIN_TYPE + "']",
         ")");
   }
 
@@ -7388,12 +7382,6 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
         "cc_rule(name='foo', cc_dep=':cc_dep',",
         "        file='file.cc',",
         "        linkstamps_dep='//bazel_internal/test_rules/cc:linkstamps')");
-    scratch.appendFile(
-        "tools/cpp/grep_includes/BUILD",
-        "sh_binary(",
-        "    name = 'grep-includes',",
-        "    srcs = ['grep-includes.sh'],",
-        ")");
     List<String> calls =
         new ArrayList<>(
             Arrays.asList("linkstamp.file()", "linkstamp.hdrs()", "linking_context.linkstamps()"));
@@ -7401,7 +7389,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
       calls.add(
           "cc_common.register_linkstamp_compile_action(actions=ctx.actions,cc_toolchain=toolchain,"
               + " feature_configuration=feature_configuration, "
-              + " grep_includes=ctx.executable._grep_includes, source_file=file, output_file=file,"
+              + " source_file=file, output_file=file,"
               + " compilation_inputs=depset([]), inputs_for_validation=depset([]),"
               + " label_replacement='', output_replacement='')");
     }
@@ -7428,11 +7416,6 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
           "    'linkstamps_dep': attr.label(),",
           "    '_cc_toolchain': attr.label(default=Label('//b:alias')),",
           "    'file': attr.label(allow_single_file=True),",
-          "    '_grep_includes': attr.label(",
-          "          executable = True,",
-          "          default = Label('//tools/cpp/grep_includes:grep-includes'),",
-          "          cfg = 'exec'",
-          "    ),",
           "  },",
           "  fragments = ['cpp'],",
           ")");
@@ -7671,7 +7654,9 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
     AssertionError e =
         assertThrows(AssertionError.class, () -> getConfiguredTarget("//foo:custom"));
 
-    assertThat(e).hasMessageThat().contains("private API only for use in builtins");
+    assertThat(e)
+        .hasMessageThat()
+        .contains("file '//foo:custom_rule.bzl' cannot use private @_builtins API");
   }
 
   @Test
@@ -7847,7 +7832,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
   }
 
   @Test
-  public void testGetCompileBuildVariablesStripOptsNotAcessibleFromOutsideBuiltins()
+  public void testGetCompileBuildVariablesStripOptsNotAccessibleFromOutsideBuiltins()
       throws Exception {
     scratch.file(
         "foo/BUILD",
@@ -7877,7 +7862,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
   }
 
   @Test
-  public void testGetCompileBuildVariablesInputFileNotAcessibleFromOutsideBuiltins()
+  public void testGetCompileBuildVariablesInputFileNotAccessibleFromOutsideBuiltins()
       throws Exception {
     scratch.file(
         "foo/BUILD",
@@ -7907,7 +7892,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
   }
 
   @Test
-  public void testCreateLinkingContextFromCompilationOutputsStampNotAcessibleFromOutsideBuiltins()
+  public void testCreateLinkingContextFromCompilationOutputsStampNotAccessibleFromOutsideBuiltins()
       throws Exception {
     scratch.file(
         "foo/BUILD",
@@ -7939,7 +7924,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
   }
 
   @Test
-  public void testLinkUseTestOnlyFlagNotAcessibleFromOutsideBuiltins() throws Exception {
+  public void testLinkUseTestOnlyFlagNotAccessibleFromOutsideBuiltins() throws Exception {
     scratch.file(
         "foo/BUILD",
         "load(':custom_rule.bzl', 'custom_rule')",
@@ -7968,7 +7953,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
   }
 
   @Test
-  public void testLinkUsePdbFileNotAcessibleFromOutsideBuiltins() throws Exception {
+  public void testLinkUsePdbFileNotAccessibleFromOutsideBuiltins() throws Exception {
     scratch.file(
         "foo/BUILD",
         "load(':custom_rule.bzl', 'custom_rule')",
@@ -7997,7 +7982,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
   }
 
   @Test
-  public void testLinkUseWinDefFileNotAcessibleFromOutsideBuiltins() throws Exception {
+  public void testLinkUseWinDefFileNotAccessibleFromOutsideBuiltins() throws Exception {
     scratch.file(
         "foo/BUILD",
         "load(':custom_rule.bzl', 'custom_rule')",
@@ -8204,7 +8189,11 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
     scratch.file(
         "foo/extension.bzl",
         "def _cc_skylark_library_impl(ctx):",
-        "    return [ctx.attr._cc_toolchain[cc_common.CcToolchainInfo]]",
+        "    if ctx.attr._cc_toolchain:",
+        "      toolchain = ctx.attr._cc_toolchain[cc_common.CcToolchainInfo]",
+        "    else:",
+        "      toolchain = ctx.toolchains['" + TestConstants.CPP_TOOLCHAIN_TYPE + "'].cc",
+        "    return [toolchain]",
         "cc_skylark_library = rule(",
         "    implementation = _cc_skylark_library_impl,",
         "    attrs = {",
@@ -8212,6 +8201,7 @@ public class StarlarkCcCommonTest extends BuildViewTestCase {
         "          configuration_field(fragment = 'cpp', name = 'cc_toolchain')),",
         "    },",
         "    fragments = ['cpp'],",
+        "    toolchains = ['" + TestConstants.CPP_TOOLCHAIN_TYPE + "']",
         ")");
 
     ConfiguredTarget target = getConfiguredTarget("//foo:skylark_lib");

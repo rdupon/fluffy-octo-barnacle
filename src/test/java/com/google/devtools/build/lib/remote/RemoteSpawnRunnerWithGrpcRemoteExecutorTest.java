@@ -28,7 +28,6 @@ import static org.mockito.Mockito.when;
 
 import build.bazel.remote.execution.v2.ActionCacheGrpc.ActionCacheImplBase;
 import build.bazel.remote.execution.v2.ActionResult;
-import build.bazel.remote.execution.v2.CacheCapabilities;
 import build.bazel.remote.execution.v2.Command;
 import build.bazel.remote.execution.v2.ContentAddressableStorageGrpc.ContentAddressableStorageImplBase;
 import build.bazel.remote.execution.v2.Digest;
@@ -66,6 +65,7 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.google.devtools.build.lib.actions.ActionInput;
 import com.google.devtools.build.lib.actions.ActionInputHelper;
 import com.google.devtools.build.lib.actions.ActionInputMap;
+import com.google.devtools.build.lib.actions.ActionOutputDirectoryHelper;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.ArtifactRoot.RootType;
 import com.google.devtools.build.lib.actions.ResourceSet;
@@ -84,7 +84,6 @@ import com.google.devtools.build.lib.exec.ExecutionOptions;
 import com.google.devtools.build.lib.exec.util.FakeOwner;
 import com.google.devtools.build.lib.remote.RemoteRetrier.ExponentialBackoff;
 import com.google.devtools.build.lib.remote.common.RemotePathResolver;
-import com.google.devtools.build.lib.remote.grpc.ChannelConnectionFactory;
 import com.google.devtools.build.lib.remote.options.RemoteOptions;
 import com.google.devtools.build.lib.remote.util.DigestUtil;
 import com.google.devtools.build.lib.remote.util.FakeSpawnExecutionContext;
@@ -301,16 +300,20 @@ public class RemoteSpawnRunnerWithGrpcRemoteExecutorTest {
             retryService);
     ReferenceCountedChannel channel =
         new ReferenceCountedChannel(
-            new ChannelConnectionFactory() {
+            new ChannelConnectionWithServerCapabilitiesFactory() {
               @Override
-              public Single<? extends ChannelConnection> create() {
+              public Single<ChannelConnectionWithServerCapabilities> create() {
                 ManagedChannel ch =
                     InProcessChannelBuilder.forName(fakeServerName)
                         .intercept(TracingMetadataUtils.newExecHeadersInterceptor(remoteOptions))
                         .directExecutor()
                         .build();
-
-                return Single.just(new ChannelConnection(ch));
+                ServerCapabilities caps =
+                    ServerCapabilities.newBuilder()
+                        .setExecutionCapabilities(
+                            ExecutionCapabilities.newBuilder().setExecEnabled(true).build())
+                        .build();
+                return Single.just(new ChannelConnectionWithServerCapabilities(ch, caps));
               }
 
               @Override
@@ -318,22 +321,15 @@ public class RemoteSpawnRunnerWithGrpcRemoteExecutorTest {
                 return 100;
               }
             });
-    ServerCapabilities caps =
-        ServerCapabilities.newBuilder()
-            .setExecutionCapabilities(
-                ExecutionCapabilities.newBuilder().setExecEnabled(true).build())
-            .build();
+
     GrpcRemoteExecutor executor =
-        new GrpcRemoteExecutor(
-            caps, channel.retain(), CallCredentialsProvider.NO_CREDENTIALS, retrier);
+        new GrpcRemoteExecutor(channel.retain(), CallCredentialsProvider.NO_CREDENTIALS, retrier);
     CallCredentialsProvider callCredentialsProvider =
         GoogleAuthUtils.newCallCredentialsProvider(null);
     GrpcCacheClient cacheProtocol =
         new GrpcCacheClient(
             channel.retain(), callCredentialsProvider, remoteOptions, retrier, DIGEST_UTIL);
-    remoteCache =
-        new RemoteExecutionCache(
-            CacheCapabilities.getDefaultInstance(), cacheProtocol, remoteOptions, DIGEST_UTIL);
+    remoteCache = new RemoteExecutionCache(cacheProtocol, remoteOptions, DIGEST_UTIL);
     RemoteExecutionService remoteExecutionService =
         new RemoteExecutionService(
             directExecutor(),
@@ -1565,6 +1561,7 @@ public class RemoteSpawnRunnerWithGrpcRemoteExecutorTest {
             execRoot,
             tempPathGenerator,
             remoteOutputChecker,
+            ActionOutputDirectoryHelper.createForTesting(),
             OutputPermissions.READONLY);
 
     var actionFileSystem =

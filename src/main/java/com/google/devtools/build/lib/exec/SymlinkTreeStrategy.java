@@ -29,6 +29,7 @@ import com.google.devtools.build.lib.actions.FilesetOutputSymlink;
 import com.google.devtools.build.lib.actions.RunningActionEvent;
 import com.google.devtools.build.lib.analysis.actions.SymlinkTreeAction;
 import com.google.devtools.build.lib.analysis.actions.SymlinkTreeActionContext;
+import com.google.devtools.build.lib.analysis.config.BuildConfigurationValue.RunfileSymlinksMode;
 import com.google.devtools.build.lib.profiler.AutoProfiler;
 import com.google.devtools.build.lib.profiler.GoogleAutoProfilerUtils;
 import com.google.devtools.build.lib.server.FailureDetails.Execution;
@@ -68,6 +69,7 @@ public final class SymlinkTreeStrategy implements SymlinkTreeActionContext {
     actionExecutionContext.getEventHandler().post(new RunningActionEvent(action, "local"));
     try (AutoProfiler p =
         GoogleAutoProfilerUtils.logged("running " + action.prettyPrint(), MIN_LOGGING)) {
+      // TODO(tjgq): Respect RunfileSymlinksMode.SKIP even in the presence of an OutputService.
       try {
         if (outputService != null && outputService.canCreateSymlinkTree()) {
           Path inputManifest = actionExecutionContext.getInputPath(action.getInputManifest());
@@ -99,10 +101,15 @@ public final class SymlinkTreeStrategy implements SymlinkTreeActionContext {
               action.getOutputManifest().getExecPath().getParentDirectory());
 
           createOutput(action, actionExecutionContext, inputManifest);
-        } else if (!action.isRunfilesEnabled()) {
-          createSymlinkTreeHelper(action, actionExecutionContext).copyManifest();
-        } else if (action.getInputManifest() == null
-            || (action.inprocessSymlinkCreation() && !action.isFilesetTree())) {
+        } else if (action.getRunfileSymlinksMode() == RunfileSymlinksMode.SKIP) {
+          // Delete symlinks possibly left over by a previous invocation with a different mode.
+          // This is required because only the output manifest is considered an action output, so
+          // Skyframe does not clear the directory for us.
+          var helper = createSymlinkTreeHelper(action, actionExecutionContext);
+          helper.clearRunfilesDirectory();
+          helper.linkManifest();
+        } else if (action.getRunfileSymlinksMode() == RunfileSymlinksMode.INTERNAL
+            && !action.isFilesetTree()) {
           try {
             Map<PathFragment, Artifact> runfiles = runfilesToMap(action);
             createSymlinkTreeHelper(action, actionExecutionContext)
@@ -113,10 +120,7 @@ public final class SymlinkTreeStrategy implements SymlinkTreeActionContext {
                 new EnvironmentalExecException(e, Code.SYMLINK_TREE_CREATION_IO_EXCEPTION), action);
           }
 
-          Path inputManifest =
-              action.getInputManifest() == null
-                  ? null
-                  : actionExecutionContext.getInputPath(action.getInputManifest());
+          Path inputManifest = actionExecutionContext.getInputPath(action.getInputManifest());
           createOutput(action, actionExecutionContext, inputManifest);
         } else {
           Map<String, String> resolvedEnv = new LinkedHashMap<>();
@@ -135,10 +139,8 @@ public final class SymlinkTreeStrategy implements SymlinkTreeActionContext {
   }
 
   private static Map<PathFragment, Artifact> runfilesToMap(SymlinkTreeAction action) {
-    // This call outputs warnings about overlapping symlinks. However, this is already called by the
-    // SourceManifestAction, so it can happen that we generate the warning twice. If the input
-    // manifest is null, then we print the warning. Otherwise we assume that the
-    // SourceManifestAction already printed it.
+    // This call outputs warnings about overlapping symlinks. However, since this has already been
+    // called by the SourceManifestAction, we silence the warnings here.
     return action
         .getRunfiles()
         .getRunfilesInputs(

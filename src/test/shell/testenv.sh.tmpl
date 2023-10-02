@@ -82,7 +82,7 @@ export PATH="$PATH_TO_BAZEL_WRAPPER:$PATH"
 # Setting up the environment for Bazel integration tests.
 #
 [ -z "$TEST_SRCDIR" ] && log_fatal "TEST_SRCDIR not set!"
-BAZEL_RUNFILES="$TEST_SRCDIR/io_bazel"
+BAZEL_RUNFILES="$TEST_SRCDIR/_main"
 
 # WORKSPACE file
 workspace_file="${BAZEL_RUNFILES}/WORKSPACE"
@@ -92,7 +92,7 @@ distdir_bzl_file="${BAZEL_RUNFILES}/distdir.bzl"
 if [[ $PLATFORM =~ msys ]]; then
   jdk_dir="$(cygpath -m $(cd $(rlocation local_jdk/bin/java.exe)/../..; pwd))"
 else
-  jdk_dir="${TEST_SRCDIR}/local_jdk"
+  jdk_dir="$(dirname $(dirname $(rlocation local_jdk/bin/java)))"
 fi
 
 # Tools directory location
@@ -323,9 +323,15 @@ EOF
 
   if [[ -n ${REPOSITORY_CACHE:-} ]]; then
     echo "testenv.sh: Using repository cache at $REPOSITORY_CACHE."
-    cat >>$TEST_TMPDIR/bazelrc <<EOF
-common --repository_cache=$REPOSITORY_CACHE --experimental_repository_cache_hardlinks
-EOF
+    echo "common --repository_cache=$REPOSITORY_CACHE" >> $TEST_TMPDIR/bazelrc
+    # TODO(sluongng): Remove this flag once all dependencies are mirrored.
+    # See https://github.com/bazelbuild/bazel/pull/19549 for more context.
+    echo "common --norepository_cache_urls_as_default_canonical_id" >> $TEST_TMPDIR/bazelrc
+    if is_darwin; then
+      # For reducing SSD usage on our physical Mac machines.
+      echo "testenv.sh: Enabling --experimental_repository_cache_hardlinks"
+      echo "common --experimental_repository_cache_hardlinks" >> $TEST_TMPDIR/bazelrc
+    fi
   fi
 
   if [[ -n ${TEST_INSTALL_BASE:-} ]]; then

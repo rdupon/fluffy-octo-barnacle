@@ -41,7 +41,6 @@ import net.starlark.java.annot.Param;
 import net.starlark.java.annot.StarlarkBuiltin;
 import net.starlark.java.annot.StarlarkMethod;
 import net.starlark.java.eval.EvalException;
-import net.starlark.java.eval.Module;
 import net.starlark.java.eval.Printer;
 import net.starlark.java.eval.Starlark;
 import net.starlark.java.eval.StarlarkSemantics;
@@ -56,7 +55,14 @@ import net.starlark.java.eval.StarlarkValue;
  *
  * <p>Parsing is robust against bad input, for example, from the command line.
  */
-@StarlarkBuiltin(name = "Label", category = DocCategory.BUILTIN, doc = "A BUILD target identifier.")
+@StarlarkBuiltin(
+    name = "Label",
+    category = DocCategory.BUILTIN,
+    doc =
+        "A BUILD target identifier."
+            + "<p>For every <code>Label<code> instance <code>l</code>, the string representation"
+            + " <code>str(l)</code> has the property that <code>Label(str(l)) == l</code>,"
+            + " regardless of where the <code>Label()</code> call occurs.")
 @AutoCodec
 @Immutable
 @ThreadSafe
@@ -511,9 +517,7 @@ public final class Label implements Comparable<Label>, StarlarkValue, SkyKey, Co
     return parseWithPackageContext(
         relName,
         PackageContext.of(
-            packageIdentifier,
-            BazelModuleContext.of(Module.ofInnermostEnclosingStarlarkFunction(thread))
-                .repoMapping()));
+            packageIdentifier, BazelModuleContext.ofInnermostBzlOrThrow(thread).repoMapping()));
   }
 
   @Override

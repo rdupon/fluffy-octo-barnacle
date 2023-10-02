@@ -34,6 +34,7 @@ import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.packages.Provider;
 import com.google.devtools.build.lib.packages.StarlarkProvider;
 import com.google.devtools.build.lib.packages.StructImpl;
+import com.google.devtools.build.lib.packages.util.MockProtoSupport;
 import com.google.devtools.build.lib.rules.java.JavaCompilationArgsProvider;
 import com.google.devtools.build.lib.rules.java.JavaCompileAction;
 import com.google.devtools.build.lib.rules.java.JavaInfo;
@@ -58,25 +59,20 @@ public class StarlarkJavaLiteProtoLibraryTest extends BuildViewTestCase {
     useConfiguration(
         "--proto_compiler=//proto:compiler",
         "--proto_toolchain_for_javalite=//tools/proto/toolchains:javalite");
+    MockProtoSupport.setup(mockToolsConfig);
 
     scratch.file("proto/BUILD", "licenses(['notice'])", "exports_files(['compiler'])");
 
     mockToolchains();
+    invalidatePackages();
 
     actionsTestUtil = actionsTestUtil();
-  }
-
-  @Before
-  public final void setupStarlarkRule() throws Exception {
-    setBuildLanguageOptions(
-        "--experimental_builtins_injection_override=+java_lite_proto_library",
-        "--experimental_google_legacy_api");
   }
 
   private void mockToolchains() throws IOException {
     mockRuntimes();
 
-    scratch.file(
+    scratch.appendFile(
         "tools/proto/toolchains/BUILD",
         "package(default_visibility=['//visibility:public'])",
         "proto_lang_toolchain(",
@@ -318,7 +314,7 @@ public class StarlarkJavaLiteProtoLibraryTest extends BuildViewTestCase {
         /* doAnalysis= */ true,
         new EventBus());
     // Implicitly check that `update()` above didn't throw an exception. This implicitly checks that
-    // ctx.attr.dep.java.{transitive_deps, outputs}, above, is defined.
+    // ctx.attr.dep.java.{transitive_compile_time_jars, outputs}, above, is defined.
   }
 
   @Test

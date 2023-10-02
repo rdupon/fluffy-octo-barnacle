@@ -368,8 +368,10 @@ sh_test(
     data = [
         ":rules_proto_stanza.txt",
         ":test-deps",
+        "//third_party/zlib",
         "@bazel_tools//tools/bash/runfiles",
     ],
+    tags = ["requires-network"],  # Allow this test to access internet to fetch rules_proto dependencies.
 )
 
 sh_test(
@@ -378,17 +380,6 @@ sh_test(
     srcs = ["force_delete_output_test.sh"],
     data = [":test-deps"],
     tags = ["no_windows"],
-)
-
-sh_test(
-    name = "incompatible_changes_conflict_test",
-    size = "small",
-    timeout = "moderate",
-    srcs = ["incompatible_changes_conflict_test.sh"],
-    data = [
-        ":test-deps",
-        "@bazel_tools//tools/bash/runfiles",
-    ],
 )
 
 sh_test(
@@ -874,6 +865,15 @@ sh_test(
     ],
     # TODO(arostovtsev): figure out how to make this test Windows-compatible.
     tags = ["no_windows"],
+)
+
+sh_test(
+    name = "subrules_test",
+    srcs = ["subrules_test.sh"],
+    data = [
+        ":test-deps",
+        "@bazel_tools//tools/bash/runfiles",
+    ],
 )
 
 ########################################################################

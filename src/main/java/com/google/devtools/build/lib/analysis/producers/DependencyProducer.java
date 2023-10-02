@@ -45,9 +45,9 @@ import com.google.devtools.build.lib.packages.NoSuchThingException;
 import com.google.devtools.build.lib.packages.Target;
 import com.google.devtools.build.lib.packages.TargetUtils;
 import com.google.devtools.build.lib.skyframe.AspectCreationException;
-import com.google.devtools.build.lib.skyframe.BuildConfigurationKey;
 import com.google.devtools.build.lib.skyframe.ConfiguredTargetAndData;
 import com.google.devtools.build.lib.skyframe.ConfiguredValueCreationException;
+import com.google.devtools.build.lib.skyframe.config.BuildConfigurationKey;
 import com.google.devtools.build.skyframe.SkyValue;
 import com.google.devtools.build.skyframe.state.StateMachine;
 import com.google.devtools.common.options.OptionsParsingException;
@@ -189,12 +189,26 @@ final class DependencyProducer
 
   @Override
   public void acceptTransitionError(TransitionException e) {
-    sink.acceptDependencyError(DependencyError.of(e));
+    sink.acceptDependencyError(
+        DependencyError.of(new TransitionException(getMessageWithEdgeTransitionInfo(e), e)));
   }
 
   @Override
   public void acceptTransitionError(OptionsParsingException e) {
-    sink.acceptDependencyError(DependencyError.of(e));
+    sink.acceptDependencyError(
+        DependencyError.of(
+            new OptionsParsingException(
+                getMessageWithEdgeTransitionInfo(e), e.getInvalidArgument(), e)));
+  }
+
+  private String getMessageWithEdgeTransitionInfo(Throwable e) {
+    return String.format(
+        "On dependency edge %s (%s) -|%s|-> %s: %s",
+        parameters.target().getLabel(),
+        parameters.configurationKey().getOptions().shortId(),
+        kind.getAttribute().getName(),
+        toLabel,
+        e.getMessage());
   }
 
   private StateMachine processTransitionResult(Tasks tasks) {
@@ -364,7 +378,7 @@ final class DependencyProducer
                   new ConfiguredValueCreationException(
                       parameters.location(),
                       message,
-                      toLabel,
+                      parameters.label(),
                       parameters.eventId(),
                       /* rootCauses= */ null,
                       /* detailedExitCode= */ null),

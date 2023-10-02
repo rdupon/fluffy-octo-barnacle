@@ -58,6 +58,11 @@ public class InMemoryGraphTest extends GraphTest {
     }
 
     @Override
+    protected Version getStartingVersion() {
+      return Version.constant();
+    }
+
+    @Override
     protected Version getNextVersion(Version version) {
       throw new UnsupportedOperationException();
     }

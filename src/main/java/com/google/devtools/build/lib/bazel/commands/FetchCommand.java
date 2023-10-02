@@ -13,16 +13,22 @@
 // limitations under the License.
 package com.google.devtools.build.lib.bazel.commands;
 
+import static com.google.common.primitives.Booleans.countTrue;
+
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.devtools.build.lib.analysis.NoBuildEvent;
 import com.google.devtools.build.lib.analysis.NoBuildRequestFinishedEvent;
+import com.google.devtools.build.lib.bazel.bzlmod.BazelFetchAllValue;
 import com.google.devtools.build.lib.cmdline.RepositoryMapping;
 import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.cmdline.TargetPattern;
 import com.google.devtools.build.lib.cmdline.TargetPattern.Parser;
 import com.google.devtools.build.lib.events.Event;
+import com.google.devtools.build.lib.packages.LabelPrinter;
 import com.google.devtools.build.lib.packages.Target;
+import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.pkgcache.PackageOptions;
 import com.google.devtools.build.lib.query2.common.AbstractBlazeQueryEnvironment;
 import com.google.devtools.build.lib.query2.common.UniverseScope;
@@ -43,10 +49,14 @@ import com.google.devtools.build.lib.server.FailureDetails;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.server.FailureDetails.FetchCommand.Code;
 import com.google.devtools.build.lib.skyframe.RepositoryMappingValue.RepositoryMappingResolutionException;
+import com.google.devtools.build.lib.skyframe.SkyframeExecutor;
 import com.google.devtools.build.lib.util.AbruptExitException;
 import com.google.devtools.build.lib.util.DetailedExitCode;
 import com.google.devtools.build.lib.util.ExitCode;
 import com.google.devtools.build.lib.util.InterruptedFailureDetails;
+import com.google.devtools.build.skyframe.EvaluationContext;
+import com.google.devtools.build.skyframe.EvaluationResult;
+import com.google.devtools.build.skyframe.SkyValue;
 import com.google.devtools.common.options.OptionsParsingResult;
 import java.io.IOException;
 import java.util.EnumSet;
@@ -54,7 +64,12 @@ import java.util.EnumSet;
 /** Fetches external repositories. Which is so fetch. */
 @Command(
     name = FetchCommand.NAME,
-    options = {PackageOptions.class, KeepGoingOption.class, LoadingPhaseThreadsOption.class},
+    options = {
+      FetchOptions.class,
+      PackageOptions.class,
+      KeepGoingOption.class,
+      LoadingPhaseThreadsOption.class
+    },
     help = "resource:fetch.txt",
     shortDescription = "Fetches external repositories that are prerequisites to the targets.",
     allowResidue = true,
@@ -68,6 +83,95 @@ public final class FetchCommand implements BlazeCommand {
 
   @Override
   public BlazeCommandResult exec(CommandEnvironment env, OptionsParsingResult options) {
+    PackageOptions pkgOptions = options.getOptions(PackageOptions.class);
+    if (!pkgOptions.fetch) {
+      String errorMessage = "You cannot run fetch with --fetch=false";
+      env.getReporter().handle(Event.error(null, errorMessage));
+      return createFailedBlazeCommandResult(Code.OPTIONS_INVALID, errorMessage);
+    }
+    FetchOptions fetchOptions = options.getOptions(FetchOptions.class);
+    // Validate only one option is provided for fetch
+    boolean moreThanOneOption =
+        countTrue(fetchOptions.all, fetchOptions.configure, !options.getResidue().isEmpty()) > 1;
+    if (moreThanOneOption) {
+      String errorMessage = "Only one fetch option should be provided for fetch command.";
+      env.getReporter().handle(Event.error(null, errorMessage));
+      return createFailedBlazeCommandResult(Code.OPTIONS_INVALID, errorMessage);
+    }
+    LoadingPhaseThreadsOption threadsOption = options.getOptions(LoadingPhaseThreadsOption.class);
+
+    env.getEventBus()
+        .post(
+            new NoBuildEvent(
+                env.getCommandName(),
+                env.getCommandStartTime(),
+                /* separateFinishedEvent= */ true,
+                /* showProgress= */ true,
+                /* id= */ null));
+    BlazeCommandResult result;
+
+    if (fetchOptions.all || fetchOptions.configure) {
+      return fetchAll(env, options, fetchOptions.configure, threadsOption);
+    } else {
+      result = fetchTarget(env, options, threadsOption);
+    }
+    env.getEventBus()
+        .post(
+            new NoBuildRequestFinishedEvent(
+                result.getExitCode(), env.getRuntime().getClock().currentTimeMillis()));
+    return result;
+  }
+
+  private BlazeCommandResult fetchAll(
+      CommandEnvironment env,
+      OptionsParsingResult options,
+      boolean configureEnabled,
+      LoadingPhaseThreadsOption threadsOption) {
+    if (!options.getOptions(BuildLanguageOptions.class).enableBzlmod) {
+      String errorMessage =
+          "Bzlmod has to be enabled for fetch --all to work, run with --enable_bzlmod";
+      env.getReporter().handle(Event.error(null, errorMessage));
+      return BlazeCommandResult.detailedExitCode(
+          InterruptedFailureDetails.detailedExitCode(errorMessage));
+    }
+
+    SkyframeExecutor skyframeExecutor = env.getSkyframeExecutor();
+    EvaluationContext evaluationContext =
+        EvaluationContext.newBuilder()
+            .setParallelism(threadsOption.threads)
+            .setEventHandler(env.getReporter())
+            .build();
+
+    try {
+      env.syncPackageLoading(options);
+      EvaluationResult<SkyValue> evaluationResult =
+          skyframeExecutor.prepareAndGet(
+              ImmutableSet.of(BazelFetchAllValue.key(configureEnabled)), evaluationContext);
+      if (evaluationResult.hasError()) {
+        Exception e = evaluationResult.getError().getException();
+        String errorMessage =
+            e != null ? e.getMessage() : "Unexpected error during fetching all external deps.";
+        env.getReporter().handle(Event.error(errorMessage));
+        return BlazeCommandResult.detailedExitCode(
+            InterruptedFailureDetails.detailedExitCode(errorMessage));
+      }
+      // Everything is fetched successfully!
+      return BlazeCommandResult.success();
+    } catch (AbruptExitException e) {
+      env.getReporter().handle(Event.error(null, "Unknown error: " + e.getMessage()));
+      return BlazeCommandResult.detailedExitCode(e.getDetailedExitCode());
+    } catch (InterruptedException e) {
+      String errorMessage = "Fetch interrupted: " + e.getMessage();
+      env.getReporter().handle(Event.error(errorMessage));
+      return BlazeCommandResult.detailedExitCode(
+          InterruptedFailureDetails.detailedExitCode(errorMessage));
+    }
+  }
+
+  private BlazeCommandResult fetchTarget(
+      CommandEnvironment env,
+      OptionsParsingResult options,
+      LoadingPhaseThreadsOption threadsOption) {
     if (options.getResidue().isEmpty()) {
       String errorMessage =
           String.format(
@@ -77,11 +181,8 @@ public final class FetchCommand implements BlazeCommand {
       return createFailedBlazeCommandResult(Code.EXPRESSION_MISSING, errorMessage);
     }
 
-    LoadingPhaseThreadsOption threadsOption = options.getOptions(LoadingPhaseThreadsOption.class);
     boolean keepGoing = options.getOptions(KeepGoingOption.class).keepGoing;
-
     TargetPattern.Parser mainRepoTargetParser;
-
     try {
       env.syncPackageLoading(options);
       RepositoryMapping repoMapping =
@@ -102,13 +203,6 @@ public final class FetchCommand implements BlazeCommand {
       return BlazeCommandResult.detailedExitCode(e.getDetailedExitCode());
     }
 
-    PackageOptions pkgOptions = options.getOptions(PackageOptions.class);
-    if (!pkgOptions.fetch) {
-      String errorMessage = "You cannot run fetch with --fetch=false";
-      env.getReporter().handle(Event.error(null, errorMessage));
-      return createFailedBlazeCommandResult(Code.OPTIONS_INVALID, errorMessage);
-    }
-
     // Querying for all of the dependencies of the targets has the side-effect of populating the
     // Skyframe graph for external targets, which requires downloading them. The JDK is required to
     // build everything but isn't counted as a dep in the build graph so we add it manually.
@@ -127,7 +221,8 @@ public final class FetchCommand implements BlazeCommand {
             threadsOption.threads,
             EnumSet.noneOf(Setting.class),
             /* useGraphlessQuery= */ true,
-            mainRepoTargetParser);
+            mainRepoTargetParser,
+            LabelPrinter.legacy());
 
     // 1. Parse query:
     QueryExpression expr;

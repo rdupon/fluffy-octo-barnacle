@@ -29,6 +29,8 @@ import com.google.devtools.build.lib.bazel.bzlmod.YankedVersionsUtil;
 import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.BazelCompatibilityMode;
 import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.CheckDirectDepsMode;
 import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.LockfileMode;
+import com.google.devtools.build.lib.cmdline.Label;
+import com.google.devtools.build.lib.packages.Target;
 import com.google.devtools.build.lib.packages.Type;
 import com.google.devtools.build.lib.skyframe.PrecomputedValue.Injected;
 import com.google.devtools.build.lib.vfs.Path;
@@ -62,6 +64,15 @@ public class RepoFileFunctionTest extends BuildViewTestCase {
         PrecomputedValue.injected(
             BazelModuleResolutionFunction.BAZEL_COMPATIBILITY_MODE, BazelCompatibilityMode.ERROR),
         PrecomputedValue.injected(BazelLockFileFunction.LOCKFILE_MODE, LockfileMode.UPDATE));
+  }
+
+  @Test
+  public void defaultVisibility() throws Exception {
+    scratch.overwriteFile("REPO.bazel", "repo(default_visibility=['//some:thing'])");
+    scratch.overwriteFile("p/BUILD", "sh_library(name = 't')");
+    Target t = getTarget("//p:t");
+    assertThat(t.getVisibility().getDeclaredLabels())
+        .containsExactly(Label.parseCanonical("//some:thing"));
   }
 
   @Test

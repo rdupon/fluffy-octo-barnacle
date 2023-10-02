@@ -24,6 +24,7 @@ import com.google.devtools.build.lib.packages.Attribute.StarlarkComputedDefaultT
 import com.google.devtools.build.lib.packages.Package.NameConflictException;
 import com.google.devtools.build.lib.packages.PackageFactory.PackageContext;
 import com.google.devtools.build.lib.packages.RuleClass.Builder.RuleClassType;
+import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.util.Map;
 import java.util.Set;
@@ -55,6 +56,7 @@ public class RuleFactory {
       Package.Builder pkgBuilder,
       RuleClass ruleClass,
       BuildLangTypedAttributeValuesMap attributeValues,
+      boolean failOnUnknownAttributes,
       EventHandler eventHandler,
       ImmutableList<StarlarkThread.CallStackEntry> callstack)
       throws InvalidRuleException, InterruptedException {
@@ -92,7 +94,8 @@ public class RuleFactory {
     callstack = callstack.subList(0, callstack.size() - 1); // pop
 
     try {
-      return ruleClass.createRule(pkgBuilder, label, attributes, eventHandler, callstack);
+      return ruleClass.createRule(
+          pkgBuilder, label, attributes, failOnUnknownAttributes, eventHandler, callstack);
     } catch (LabelSyntaxException | CannotPrecomputeDefaultsException e) {
       throw new RuleFactory.InvalidRuleException(ruleClass + " " + e.getMessage());
     }
@@ -122,10 +125,18 @@ public class RuleFactory {
       Package.Builder pkgBuilder,
       RuleClass ruleClass,
       BuildLangTypedAttributeValuesMap attributeValues,
+      boolean failOnUnknownAttributes,
       EventHandler eventHandler,
       ImmutableList<StarlarkThread.CallStackEntry> callstack)
       throws InvalidRuleException, NameConflictException, InterruptedException {
-    Rule rule = createRule(pkgBuilder, ruleClass, attributeValues, eventHandler, callstack);
+    Rule rule =
+        createRule(
+            pkgBuilder,
+            ruleClass,
+            attributeValues,
+            failOnUnknownAttributes,
+            eventHandler,
+            callstack);
     pkgBuilder.addRule(rule);
     return rule;
   }
@@ -221,7 +232,10 @@ public class RuleFactory {
     // optionally followed by other Starlark or built-in functions, and finally the rule
     // instantiation function.
     if (stack.size() < 2 || !stack.get(1).location.file().endsWith(".bzl")) {
-      return args; // Not instantiated by a Starlark macro.
+      // Not instantiated by a Starlark macro.
+      // (Edge case not handled: BUILD file calls helper(cc_library) defined in an .scl file, and
+      // helper instantiates the rule that's passed as an argument.)
+      return args;
     }
 
     if (args.containsAttributeNamed("generator_name")) {
@@ -282,6 +296,9 @@ public class RuleFactory {
             context.pkgBuilder,
             ruleClass,
             new BuildLangTypedAttributeValuesMap(kwargs),
+            thread
+                .getSemantics()
+                .getBool(BuildLanguageOptions.INCOMPATIBLE_FAIL_ON_UNKNOWN_ATTRIBUTES),
             context.eventHandler,
             thread.getCallStack());
       } catch (RuleFactory.InvalidRuleException | Package.NameConflictException e) {

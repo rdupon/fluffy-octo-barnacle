@@ -86,7 +86,7 @@ public class BazelWorkspaceStatusModule extends BlazeModule {
     private final String hostname;
 
     private static final DateTimeFormatter TIME_FORMAT =
-        DateTimeFormatter.ofPattern("yyyy MMM d HH mm ss EEE");
+        DateTimeFormatter.ofPattern("yyyy MMM dd HH mm ss EEE");
 
     private static String format(long timestamp) {
       return Instant.ofEpochMilli(timestamp).atZone(ZoneOffset.UTC).format(TIME_FORMAT);
@@ -192,9 +192,9 @@ public class BazelWorkspaceStatusModule extends BlazeModule {
       stableMap.put(BuildInfo.BUILD_EMBED_LABEL, options.embedLabel);
       stableMap.put(BuildInfo.BUILD_HOST, hostname);
       stableMap.put(BuildInfo.BUILD_USER, username);
-      volatileMap.put(
-          BuildInfo.BUILD_TIMESTAMP, Long.toString(getCurrentTimeMillis(clientEnv) / 1000));
-      volatileMap.put("FORMATTED_DATE", format(getCurrentTimeMillis(clientEnv) / 1000 * 1000));
+      long currentTimeMillis = getCurrentTimeMillis(clientEnv);
+      volatileMap.put(BuildInfo.BUILD_TIMESTAMP, Long.toString(currentTimeMillis / 1000));
+      volatileMap.put("FORMATTED_DATE", format(currentTimeMillis / 1000 * 1000));
       try {
         Map<String, String> statusMap =
             parseWorkspaceStatus(getAdditionalWorkspaceStatus(options, actionExecutionContext));

@@ -27,6 +27,7 @@ import com.google.devtools.build.lib.analysis.SourceManifestAction.ManifestType;
 import com.google.devtools.build.lib.analysis.actions.ActionConstructionContext;
 import com.google.devtools.build.lib.analysis.actions.SymlinkTreeAction;
 import com.google.devtools.build.lib.analysis.config.BuildConfigurationValue;
+import com.google.devtools.build.lib.analysis.config.BuildConfigurationValue.RunfileSymlinksMode;
 import com.google.devtools.build.lib.analysis.config.RunUnder;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
@@ -38,7 +39,6 @@ import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import java.util.Collection;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -88,8 +88,8 @@ public final class RunfilesSupport implements RunfilesSupplier {
   private final Artifact repoMappingManifest;
   private final Artifact runfilesMiddleman;
   private final Artifact owningExecutable;
+  private final RunfileSymlinksMode runfileSymlinksMode;
   private final boolean buildRunfileLinks;
-  private final boolean runfilesEnabled;
   private final CommandLine args;
   private final ActionEnvironment actionEnvironment;
 
@@ -107,7 +107,9 @@ public final class RunfilesSupport implements RunfilesSupplier {
       CommandLine args,
       ActionEnvironment actionEnvironment) {
     Artifact owningExecutable = Preconditions.checkNotNull(executable);
-    boolean createManifest = ruleContext.getConfiguration().buildRunfilesManifests();
+    RunfileSymlinksMode runfileSymlinksMode =
+        ruleContext.getConfiguration().getRunfileSymlinksMode();
+    boolean buildRunfileManifests = ruleContext.getConfiguration().buildRunfileManifests();
     boolean buildRunfileLinks = ruleContext.getConfiguration().buildRunfileLinks();
 
     // Adding run_under target to the runfiles manifest so it would become part
@@ -132,7 +134,7 @@ public final class RunfilesSupport implements RunfilesSupplier {
 
     Artifact runfilesInputManifest;
     Artifact runfilesManifest;
-    if (createManifest) {
+    if (buildRunfileManifests) {
       runfilesInputManifest = createRunfilesInputManifestArtifact(ruleContext, owningExecutable);
       runfilesManifest =
           createRunfilesAction(
@@ -145,8 +147,6 @@ public final class RunfilesSupport implements RunfilesSupplier {
         createRunfilesMiddleman(
             ruleContext, owningExecutable, runfiles, runfilesManifest, repoMappingManifest);
 
-    boolean runfilesEnabled = ruleContext.getConfiguration().runfilesEnabled();
-
     return new RunfilesSupport(
         runfiles,
         runfilesInputManifest,
@@ -154,8 +154,8 @@ public final class RunfilesSupport implements RunfilesSupplier {
         repoMappingManifest,
         runfilesMiddleman,
         owningExecutable,
+        runfileSymlinksMode,
         buildRunfileLinks,
-        runfilesEnabled,
         args,
         actionEnvironment);
   }
@@ -167,8 +167,8 @@ public final class RunfilesSupport implements RunfilesSupplier {
       Artifact repoMappingManifest,
       Artifact runfilesMiddleman,
       Artifact owningExecutable,
+      RunfileSymlinksMode runfileSymlinksMode,
       boolean buildRunfileLinks,
-      boolean runfilesEnabled,
       CommandLine args,
       ActionEnvironment actionEnvironment) {
     this.runfiles = runfiles;
@@ -177,8 +177,8 @@ public final class RunfilesSupport implements RunfilesSupplier {
     this.repoMappingManifest = repoMappingManifest;
     this.runfilesMiddleman = runfilesMiddleman;
     this.owningExecutable = owningExecutable;
+    this.runfileSymlinksMode = runfileSymlinksMode;
     this.buildRunfileLinks = buildRunfileLinks;
-    this.runfilesEnabled = runfilesEnabled;
     this.args = args;
     this.actionEnvironment = actionEnvironment;
   }
@@ -195,9 +195,25 @@ public final class RunfilesSupport implements RunfilesSupplier {
   }
 
   /**
-   * Returns {@code true} if runfile symlinks should be materialized when building an executable.
-   *
-   * <p>Also see {@link #isRunfilesEnabled()}.
+   * Same as {@link #getRunfileSymlinksMode(PathFragment)} with {@link
+   * #getRunfilesDirectoryExecPath} as the implied argument.
+   */
+  public RunfileSymlinksMode getRunfileSymlinksMode() {
+    return runfileSymlinksMode;
+  }
+
+  @Override
+  @Nullable
+  public RunfileSymlinksMode getRunfileSymlinksMode(PathFragment runfilesDir) {
+    if (runfilesDir.equals(getRunfilesDirectoryExecPath())) {
+      return runfileSymlinksMode;
+    }
+    return null;
+  }
+
+  /**
+   * Same as {@link #isBuildRunfileLinks(PathFragment)} with {@link #getRunfilesDirectoryExecPath}
+   * as the implied argument.
    */
   public boolean isBuildRunfileLinks() {
     return buildRunfileLinks;
@@ -206,16 +222,6 @@ public final class RunfilesSupport implements RunfilesSupplier {
   @Override
   public boolean isBuildRunfileLinks(PathFragment runfilesDir) {
     return buildRunfileLinks && runfilesDir.equals(getRunfilesDirectoryExecPath());
-  }
-
-  /**
-   * Returns {@code true} if runfile symlinks are enabled.
-   *
-   * <p>This option differs from {@link #isBuildRunfileLinks()} in that if {@code false} it also
-   * disables runfile symlinks creation during run/test.
-   */
-  public boolean isRunfilesEnabled() {
-    return runfilesEnabled;
   }
 
   public Runfiles getRunfiles() {
@@ -445,49 +451,18 @@ public final class RunfilesSupport implements RunfilesSupplier {
         ruleContext,
         executable,
         runfiles,
-        computeArgs(ruleContext, CommandLine.EMPTY),
+        computeArgs(ruleContext),
         computeActionEnvironment(ruleContext));
   }
 
-  /**
-   * Creates and returns a {@link RunfilesSupport} object for the given rule and executable. Note
-   * that this method calls back into the passed in rule to obtain the runfiles.
-   */
-  public static RunfilesSupport withExecutable(
-      RuleContext ruleContext, Runfiles runfiles, Artifact executable, List<String> appendingArgs)
-      throws InterruptedException {
-    return RunfilesSupport.create(
-        ruleContext,
-        executable,
-        runfiles,
-        computeArgs(ruleContext, CommandLine.of(appendingArgs)),
-        computeActionEnvironment(ruleContext));
-  }
-
-  /**
-   * Creates and returns a {@link RunfilesSupport} object for the given rule, executable, runfiles
-   * and args.
-   */
-  public static RunfilesSupport withExecutable(
-      RuleContext ruleContext, Runfiles runfiles, Artifact executable, CommandLine appendingArgs)
-      throws InterruptedException {
-    return RunfilesSupport.create(
-        ruleContext,
-        executable,
-        runfiles,
-        computeArgs(ruleContext, appendingArgs),
-        computeActionEnvironment(ruleContext));
-  }
-
-  private static CommandLine computeArgs(RuleContext ruleContext, CommandLine additionalArgs)
-      throws InterruptedException {
+  private static CommandLine computeArgs(RuleContext ruleContext) throws InterruptedException {
     if (!ruleContext.getRule().isAttrDefined("args", Type.STRING_LIST)) {
       // Some non-_binary rules create RunfilesSupport instances; it is fine to not have an args
       // attribute here.
-      return additionalArgs;
+      return CommandLine.EMPTY;
     }
-    return CommandLine.concat(
-        ruleContext.getExpander().withDataLocations().tokenized("args"), additionalArgs);
+    ImmutableList<String> args = ruleContext.getExpander().withDataLocations().tokenized("args");
+    return args.isEmpty() ? CommandLine.EMPTY : CommandLine.of(args);
   }
 
   private static ActionEnvironment computeActionEnvironment(RuleContext ruleContext)
@@ -585,11 +560,6 @@ public final class RunfilesSupport implements RunfilesSupplier {
   }
 
   @Override
-  public boolean isRunfileLinksEnabled(PathFragment runfilesDir) {
-    return runfilesEnabled && runfilesDir.equals(getRunfilesDirectoryExecPath());
-  }
-
-  @Override
   public RunfilesSupplier withOverriddenRunfilesDir(PathFragment newRunfilesDir) {
     return newRunfilesDir.equals(getRunfilesDirectoryExecPath())
         ? this
@@ -598,7 +568,7 @@ public final class RunfilesSupport implements RunfilesSupplier {
             runfiles,
             /* manifest= */ null,
             repoMappingManifest,
-            buildRunfileLinks,
-            runfilesEnabled);
+            runfileSymlinksMode,
+            buildRunfileLinks);
   }
 }

@@ -125,7 +125,6 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
       converter = AutoCpuConverter.class,
       documentationCategory = OptionDocumentationCategory.OUTPUT_PARAMETERS,
       effectTags = {OptionEffectTag.CHANGES_INPUTS, OptionEffectTag.AFFECTS_OUTPUTS},
-      metadataTags = {OptionMetadataTag.EXPLICIT_IN_OUTPUT_PATH},
       help = "The target CPU.")
   public String cpu;
 
@@ -175,7 +174,7 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
 
   @Option(
       name = "incompatible_disallow_unsound_directory_outputs",
-      defaultValue = "false",
+      defaultValue = "true",
       documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
       metadataTags = OptionMetadataTag.INCOMPATIBLE_CHANGE,
       effectTags = {OptionEffectTag.BAZEL_INTERNAL_CONFIGURATION},
@@ -255,7 +254,6 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
       defaultValue = "fastbuild",
       documentationCategory = OptionDocumentationCategory.OUTPUT_PARAMETERS,
       effectTags = {OptionEffectTag.AFFECTS_OUTPUTS, OptionEffectTag.ACTION_COMMAND_LINES},
-      metadataTags = {OptionMetadataTag.EXPLICIT_IN_OUTPUT_PATH},
       help = "Specify the mode the binary will be built in. Values: 'fastbuild', 'dbg', 'opt'.")
   public CompilationMode compilationMode;
 
@@ -316,9 +314,9 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
       metadataTags = {OptionMetadataTag.INTERNAL})
   public List<String> affectedByStarlarkTransition;
 
-  /** Values for the --experimental_exec_configuration_distinguisher options * */
+  /** Values for the --experimental_exec_configuration_distinguisher options */
   public enum ExecConfigurationDistinguisherScheme {
-    /** Use hash of selected execution platform for platform_suffix. * */
+    /** Use hash of selected execution platform for platform_suffix. */
     LEGACY,
     /** Do not touch platform_suffix or do anything else. * */
     OFF,
@@ -450,7 +448,7 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
       help =
           "If true, write runfiles manifests for all targets. If false, omit them. Local tests will"
               + " fail to run when false.")
-  public boolean buildRunfilesManifests;
+  public boolean buildRunfileManifests;
 
   @Option(
       name = "build_runfile_links",
@@ -459,8 +457,8 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
       effectTags = {OptionEffectTag.AFFECTS_OUTPUTS},
       help =
           "If true, build runfiles symlink forests for all targets.  "
-              + "If false, write only manifests when possible.")
-  public boolean buildRunfiles;
+              + "If false, write them only when required by a local action, test or run command.")
+  public boolean buildRunfileLinks;
 
   @Option(
       name = "legacy_external_runfiles",
@@ -579,7 +577,7 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
 
   @Option(
       name = "experimental_output_directory_naming_scheme",
-      defaultValue = "diff_against_baseline",
+      defaultValue = "diff_against_dynamic_baseline",
       converter = OutputDirectoryNamingSchemeConverter.class,
       documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
       effectTags = {OptionEffectTag.AFFECTS_OUTPUTS},
@@ -809,49 +807,6 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
   public ExecutionInfoModifier executionInfoModifier;
 
   @Option(
-      name = "incompatible_genquery_use_graphless_query",
-      defaultValue = "null",
-      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
-      expansion = {
-        "--experimental_genquery_use_graphless_query=auto",
-      },
-      effectTags = {
-        OptionEffectTag.BAZEL_INTERNAL_CONFIGURATION,
-        OptionEffectTag.AFFECTS_OUTPUTS,
-        OptionEffectTag.LOADING_AND_ANALYSIS
-      },
-      metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
-      help = "Use graphless query and disable output ordering for genquery.")
-  public Void incompatibleUseGraphlessQuery;
-
-  @Option(
-      name = "noincompatible_genquery_use_graphless_query",
-      defaultValue = "null",
-      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
-      expansion = {
-        "--experimental_genquery_use_graphless_query=false",
-      },
-      effectTags = {
-        OptionEffectTag.BAZEL_INTERNAL_CONFIGURATION,
-        OptionEffectTag.AFFECTS_OUTPUTS,
-        OptionEffectTag.LOADING_AND_ANALYSIS
-      },
-      help = "Do not use graphless query for genquery.")
-  public Void noincompatibleUseGraphlessQuery;
-
-  @Option(
-      name = "experimental_genquery_use_graphless_query",
-      defaultValue = "auto",
-      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
-      effectTags = {
-        OptionEffectTag.BAZEL_INTERNAL_CONFIGURATION,
-        OptionEffectTag.AFFECTS_OUTPUTS,
-        OptionEffectTag.LOADING_AND_ANALYSIS
-      },
-      help = "Whether to use graphless query and disable output ordering.")
-  public TriState useGraphlessQuery;
-
-  @Option(
       name = "include_config_fragments_provider",
       defaultValue = "off",
       converter = IncludeConfigFragmentsEnumConverter.class,
@@ -881,7 +836,7 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
       metadataTags = OptionMetadataTag.EXPERIMENTAL,
       effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS, OptionEffectTag.EXECUTION},
       help = "Whether to make direct file system calls to create symlink trees")
-  public boolean inprocessSymlinkCreation;
+  public boolean inProcessSymlinkCreation;
 
   @Option(
       name = "experimental_remotable_source_manifests",
@@ -952,14 +907,12 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
   public FragmentOptions getExec() {
     CoreOptions exec = (CoreOptions) getDefault();
 
-    exec.affectedByStarlarkTransition = affectedByStarlarkTransition;
     exec.outputDirectoryNamingScheme = outputDirectoryNamingScheme;
     exec.compilationMode = hostCompilationMode;
     exec.isExec = false;
     exec.execConfigurationDistinguisherScheme = execConfigurationDistinguisherScheme;
     exec.outputPathsMode = outputPathsMode;
     exec.enableRunfiles = enableRunfiles;
-    exec.executionInfoModifier = executionInfoModifier;
     exec.commandLineBuildVariables = commandLineBuildVariables;
     exec.enforceConstraints = enforceConstraints;
     exec.mergeGenfilesDirectory = mergeGenfilesDirectory;
@@ -974,8 +927,8 @@ public class CoreOptions extends FragmentOptions implements Cloneable {
     exec.disallowUnsoundDirectoryOutputs = disallowUnsoundDirectoryOutputs;
 
     // === Runfiles ===
-    exec.buildRunfilesManifests = buildRunfilesManifests;
-    exec.buildRunfiles = buildRunfiles;
+    exec.buildRunfileManifests = buildRunfileManifests;
+    exec.buildRunfileLinks = buildRunfileLinks;
     exec.legacyExternalRunfiles = legacyExternalRunfiles;
     exec.remotableSourceManifestActions = remotableSourceManifestActions;
     exec.alwaysIncludeFilesToBuildInData = alwaysIncludeFilesToBuildInData;

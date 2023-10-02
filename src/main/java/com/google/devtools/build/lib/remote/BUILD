@@ -30,13 +30,14 @@ java_library(
         exclude = [
             "ExecutionStatusException.java",
             "ReferenceCountedChannel.java",
-            "ReferenceCountedChannelPool.java",
+            "ChannelConnectionWithServerCapabilitiesFactory.java",
             "RemoteRetrier.java",
             "RemoteRetrierUtils.java",
             "Retrier.java",
             "RemoteOutputChecker.java",
             "AbstractActionInputPrefetcher.java",
             "LeaseService.java",
+            "Store.java",
         ],
     ),
     exports = [
@@ -51,12 +52,14 @@ java_library(
         ":abstract_action_input_prefetcher",
         ":lease_service",
         ":remote_output_checker",
+        ":store",
         "//src/main/java/com/google/devtools/build/lib:build-request-options",
         "//src/main/java/com/google/devtools/build/lib:runtime",
         "//src/main/java/com/google/devtools/build/lib:runtime/command_line_path_factory",
         "//src/main/java/com/google/devtools/build/lib/actions",
         "//src/main/java/com/google/devtools/build/lib/actions:action_input_helper",
         "//src/main/java/com/google/devtools/build/lib/actions:action_lookup_data",
+        "//src/main/java/com/google/devtools/build/lib/actions:action_output_directory_helper",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/actions:execution_requirements",
         "//src/main/java/com/google/devtools/build/lib/actions:file_metadata",
@@ -159,15 +162,18 @@ java_library(
 java_library(
     name = "ReferenceCountedChannel",
     srcs = [
+        "ChannelConnectionWithServerCapabilitiesFactory.java",
         "ReferenceCountedChannel.java",
     ],
     deps = [
+        "//src/main/java/com/google/devtools/build/lib/profiler",
         "//src/main/java/com/google/devtools/build/lib/remote/grpc",
         "//src/main/java/com/google/devtools/build/lib/remote/util",
         "//third_party:guava",
         "//third_party:netty",
         "//third_party:rxjava3",
         "//third_party/grpc-java:grpc-jar",
+        "@remoteapis//:build_bazel_remote_execution_v2_remote_execution_java_proto",
     ],
 )
 
@@ -214,6 +220,7 @@ java_library(
     deps = [
         ":remote_output_checker",
         "//src/main/java/com/google/devtools/build/lib/actions",
+        "//src/main/java/com/google/devtools/build/lib/actions:action_output_directory_helper",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/actions:file_metadata",
         "//src/main/java/com/google/devtools/build/lib/events",
@@ -243,4 +250,9 @@ java_library(
         "//src/main/java/com/google/devtools/build/skyframe",
         "//third_party:jsr305",
     ],
+)
+
+java_library(
+    name = "store",
+    srcs = ["Store.java"],
 )

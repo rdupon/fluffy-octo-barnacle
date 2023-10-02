@@ -164,7 +164,7 @@ public class InMemoryGraphImpl implements InMemoryGraph {
 
   @ForOverride
   protected InMemoryNodeEntry newNodeEntry(SkyKey key) {
-    return new InMemoryNodeEntry(key);
+    return new IncrementalInMemoryNodeEntry(key);
   }
 
   @Override
@@ -272,7 +272,7 @@ public class InMemoryGraphImpl implements InMemoryGraph {
 
     @Override
     protected InMemoryNodeEntry newNodeEntry(SkyKey key) {
-      return new EdgelessInMemoryNodeEntry(key);
+      return new NonIncrementalInMemoryNodeEntry(key);
     }
   }
 
