@@ -28,10 +28,10 @@ import javax.annotation.Nullable;
  * its particular needs are.
  */
 public interface AttributeMap {
-  /**
-   * Returns the name of the rule; this is equivalent to {@code getLabel().getName()}.
-   */
-  String getName();
+  /** Describe the underlying rule, for use in messages. */
+  default String describeRule() {
+    return getLabel().toString();
+  }
 
   /**
    * Returns the label of the rule.

@@ -51,7 +51,6 @@ import com.google.devtools.build.lib.packages.Provider;
 import com.google.devtools.build.lib.packages.StarlarkProvider;
 import com.google.devtools.build.lib.packages.StructImpl;
 import com.google.devtools.build.lib.packages.util.MockObjcSupport;
-import com.google.devtools.build.lib.rules.apple.AppleToolchain;
 import com.google.devtools.build.lib.rules.cpp.CcCompilationContext;
 import com.google.devtools.build.lib.rules.cpp.CcInfo;
 import com.google.devtools.build.lib.rules.cpp.CcLinkingContext;
@@ -61,6 +60,7 @@ import com.google.devtools.build.lib.rules.cpp.CppCompileAction;
 import com.google.devtools.build.lib.rules.cpp.CppLinkAction;
 import com.google.devtools.build.lib.rules.cpp.CppRuleClasses;
 import com.google.devtools.build.lib.rules.cpp.LibraryToLink;
+import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.common.options.OptionsParsingException;
 import java.util.Collection;
 import java.util.List;
@@ -742,6 +742,32 @@ public class ObjcLibraryTest extends ObjcRuleTestCase {
       assertThat(Joiner.on("").join(removeConfigFragment(compileAction.getArguments())))
           .contains("-I" + path);
     }
+  }
+
+  @Test
+  public void testIncludesDirs_inExternalRepo_resolvesSiblingLayout() throws Exception {
+    FileSystemUtils.appendIsoLatin1(
+        scratch.resolve("WORKSPACE"),
+        "local_repository(name = 'lib_external', path = 'lib_external')");
+    invalidatePackages();
+
+    scratch.file("lib_external/WORKSPACE");
+    scratch.file(
+        "lib_external/BUILD",
+        "objc_library(",
+        "  name = 'lib',",
+        "  srcs = ['a.m', 'bar/b.h'],",
+        "  includes = ['bar'],",
+        ")");
+    scratch.file("lib_external/a.m");
+    scratch.file("lib_external/bar/b.h");
+
+    setBuildLanguageOptions("--experimental_sibling_repository_layout");
+
+    CommandAction compileAction = compileAction("@lib_external//:lib", "a.o");
+    String actionArgs = Joiner.on("").join(removeConfigFragment(compileAction.getArguments()));
+
+    assertThat(actionArgs).contains("-I../lib_external/bar");
   }
 
   @Test
@@ -2194,6 +2220,22 @@ public class ObjcLibraryTest extends ObjcRuleTestCase {
     CppCompileAction compileA = (CppCompileAction) compileAction("//bin:lib", "lib1.o");
     assertThat(compileA.compileCommandLine.getCopts())
         .containsAtLeast("bin/lib1.m", "bin/lib2.m", "bin/data.data", "bin/header.h");
+  }
+
+  @Test
+  public void testCoptsLocationWhenNotExpanded_throwsAssertionError() throws Exception {
+    scratch.file(
+        "bin/BUILD",
+        "objc_library(",
+        "    name = 'lib',",
+        "    copts = ['$(execpath lib2.m)'],",
+        "    srcs = ['lib1.m'],",
+        "    hdrs = ['header.h'],",
+        ")");
+
+    useConfiguration("--apple_platform_type=ios", "--cpu=ios_x86_64");
+
+    assertThrows(AssertionError.class, () -> compileAction("//bin:lib", "lib1.o"));
   }
 
   @Test

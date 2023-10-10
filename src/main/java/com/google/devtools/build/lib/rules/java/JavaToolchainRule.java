@@ -284,8 +284,7 @@ public final class JavaToolchainRule<C extends JavaToolchain> implements RuleDef
                 .allowedFileTypes()
                 // This needs to be in the execution configuration.
                 .cfg(ExecutionTransitionFactory.createFactory())
-                .mandatoryBuiltinProviders(
-                    ImmutableList.of(JavaPackageConfigurationProvider.class)))
+                .mandatoryProviders(JavaPackageConfigurationProvider.PROVIDER.id()))
         /* <!-- #BLAZE_RULE(java_toolchain).ATTRIBUTE(jacocorunner) -->
         Label of the JacocoCoverageRunner deploy jar.
         <!-- #END_BLAZE_RULE.ATTRIBUTE --> */
@@ -342,8 +341,7 @@ public final class JavaToolchainRule<C extends JavaToolchain> implements RuleDef
             attr("android_lint_package_configuration", LABEL_LIST)
                 .allowedFileTypes()
                 .cfg(ExecutionTransitionFactory.createFactory())
-                .mandatoryBuiltinProviders(
-                    ImmutableList.of(JavaPackageConfigurationProvider.class)))
+                .mandatoryProviders(JavaPackageConfigurationProvider.PROVIDER.id()))
         .add(attr("jspecify_processor_class", STRING).value("").undocumented("experimental"))
         .add(
             attr("jspecify_processor", LABEL)
@@ -378,7 +376,7 @@ public final class JavaToolchainRule<C extends JavaToolchain> implements RuleDef
                 .value(JavaSemantics.BYTECODE_OPTIMIZER)
                 .exec())
         .add(
-            attr(":local_java_optimization_configuration", LABEL_LIST)
+            attr(":local_java_optimization_configuration", LABEL)
                 .cfg(ExecutionTransitionFactory.createFactory())
                 .value(JavaSemantics.LOCAL_JAVA_OPTIMIZATION_CONFIGURATION))
         .build();

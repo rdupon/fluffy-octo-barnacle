@@ -634,7 +634,7 @@ public abstract class AndroidBinary implements RuleConfiguredTargetFactory {
               optimizationInfo.getMapping(),
               optimizationInfo.getProtoMapping(),
               optimizationInfo.getSeeds(),
-              /* usage= */ null,
+              optimizationInfo.getUsage(),
               /* constantStringObfuscatedMapping= */ null,
               optimizationInfo.getLibraryJar(),
               optimizationInfo.getConfig(),
@@ -996,6 +996,15 @@ public abstract class AndroidBinary implements RuleConfiguredTargetFactory {
       filterSplitValidations = true;
     }
 
+    AndroidPreDexJarProvider androidPreDexJarProvider =
+        ruleContext.getPrerequisite("application_resources", AndroidPreDexJarProvider.PROVIDER);
+
+    if (androidPreDexJarProvider != null) {
+      builder.addNativeDeclaredProvider(androidPreDexJarProvider);
+    } else {
+      builder.addNativeDeclaredProvider(new AndroidPreDexJarProvider(jarToDex));
+    }
+
     return builder
         .setFilesToBuild(filesToBuild)
         .addProvider(
@@ -1017,7 +1026,6 @@ public abstract class AndroidBinary implements RuleConfiguredTargetFactory {
                 signingKeys,
                 signingLineage,
                 keyRotationMinSdk))
-        .addNativeDeclaredProvider(new AndroidPreDexJarProvider(jarToDex))
         .addNativeDeclaredProvider(
             AndroidFeatureFlagSetProvider.create(
                 AndroidFeatureFlagSetProvider.getAndValidateFlagMapFromRuleContext(ruleContext)))
@@ -1107,6 +1115,15 @@ public abstract class AndroidBinary implements RuleConfiguredTargetFactory {
               proguardOutput.getConfig(),
               ruleContext.getImplicitOutputArtifact(JavaSemantics.JAVA_BINARY_PROGUARD_CONFIG),
               "Symlinking proguard config"));
+    }
+
+    if (proguardOutput.getUsage() != null) {
+      ruleContext.registerAction(
+          SymlinkAction.toArtifact(
+              ruleContext.getActionOwner(),
+              proguardOutput.getUsage(),
+              ruleContext.getImplicitOutputArtifact(JavaSemantics.JAVA_BINARY_PROGUARD_USAGE),
+              "Symlinking proguard usage"));
     }
 
     if (proguardOutput.getProtoMapping() != null

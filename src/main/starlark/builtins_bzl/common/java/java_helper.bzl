@@ -352,24 +352,60 @@ def _create_single_jar(
     return output
 
 # TODO(hvd): use skylib shell.quote()
-def _shell_quote(s):
-    return "'" + s.replace("'", "'\\''") + "'"
+def _shell_escape(s):
+    """Shell-escape a string
+
+    Quotes a word so that it can be used, without further quoting, as an argument
+    (or part of an argument) in a shell command.
+
+    Args:
+        s: (str) the string to escape
+
+    Returns:
+        (str) the shell-escaped string
+    """
+    if not s:
+        # Empty string is a special case: needs to be quoted to ensure that it
+        # gets treated as a separate argument.
+        return "''"
+    for c in s.elems():
+        # We do this positively so as to be sure we don't inadvertently forget
+        # any unsafe characters.
+        if not c.isalnum() and c not in "@%-_+:,./":
+            return "'" + s.replace("'", "'\\''") + "'"
+    return s
 
 def _tokenize_javacopts(ctx, opts):
-    """Tokenizes a depset of options to a list.
+    """Tokenizes a list or depset of options to a list.
 
     Args:
         ctx: (RuleContext) the rule context
-        opts: (depset[str]) the javac options to tokenize
+        opts: (depset[str]|[str]) the javac options to tokenize
 
     Returns:
         [str] list of tokenized options
     """
+    if hasattr(opts, "to_list"):
+        opts = opts.to_list()
     return [
         token
-        for opt in opts.to_list()
+        for opt in opts
         for token in ctx.tokenize(opt)
     ]
+
+def _detokenize_javacopts(opts):
+    """Detokenizes a list of options to a depset.
+
+    Args:
+        opts: (depset[str]) the javac options to tokenize
+
+    Returns:
+        (depset[str]) depset of detokenized options
+    """
+    return depset(
+        [" ".join([_shell_escape(opt) for opt in opts])],
+        order = "preorder",
+    )
 
 helper = struct(
     collect_all_targets_as_deps = _collect_all_targets_as_deps,
@@ -393,6 +429,7 @@ helper = struct(
     test_providers = _test_providers,
     executable_providers = _executable_providers,
     create_single_jar = _create_single_jar,
-    shell_quote = _shell_quote,
+    shell_escape = _shell_escape,
     tokenize_javacopts = _tokenize_javacopts,
+    detokenize_javacopts = _detokenize_javacopts,
 )

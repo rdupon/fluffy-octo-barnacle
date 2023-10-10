@@ -110,7 +110,7 @@ def _create_context_and_provider(
     all_non_sdk_linkopts = []
     non_sdk_linkopts = _add_linkopts(
         sdk_linking_info,
-        objc_internal.expand_toolchain_and_ctx_variables(ctx = ctx, flags = attr_linkopts),
+        objc_internal.expand_and_tokenize(ctx = ctx, attr = "linkopts", flags = attr_linkopts),
     )
     all_non_sdk_linkopts.extend(non_sdk_linkopts)
 
@@ -135,11 +135,6 @@ def _create_context_and_provider(
             compilation_attributes.textual_hdrs.to_list(),
         )
         objc_compilation_context_kwargs["defines"].extend(compilation_attributes.defines)
-        objc_compilation_context_kwargs["includes"].extend(
-            compilation_attributes.header_search_paths(
-                genfiles_dir = ctx.genfiles_dir.path,
-            ).to_list(),
-        )
         objc_compilation_context_kwargs["includes"].extend(sdk_includes)
 
     if compilation_artifacts != None:
