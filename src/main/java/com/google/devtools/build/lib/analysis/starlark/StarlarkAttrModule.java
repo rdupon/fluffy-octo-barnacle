@@ -323,9 +323,7 @@ public final class StarlarkAttrModule implements StarlarkAttrModuleApi {
     if (containsNonNoneKey(arguments, ASPECTS_ARG)) {
       Object obj = arguments.get(ASPECTS_ARG);
       for (StarlarkAspect aspect : Sequence.cast(obj, StarlarkAspect.class, "aspects")) {
-        aspect.attachToAspectsList(
-            /** baseAspectName= */
-            null, builder.getAspectsListBuilder());
+        builder.aspect(aspect);
       }
     }
 
@@ -813,6 +811,10 @@ public final class StarlarkAttrModule implements StarlarkAttrModuleApi {
     @Override
     public int hashCode() {
       return Objects.hash(name, attributeFactory);
+    }
+
+    TransitionFactory<AttributeTransitionData> getTransitionFactory() {
+      return attributeFactory.getTransitionFactory();
     }
   }
 

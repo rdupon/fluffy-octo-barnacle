@@ -487,7 +487,7 @@ public interface StarlarkRuleFunctionsApi {
             defaultValue = "None",
             positional = false,
             doc =
-                "Experimental: the Stalark function that is extended. When set the public"
+                "Experimental: the Stalark rule that is extended. When set the public"
                     + " attributes are merged as well as advertised providers. The rule matches"
                     + " <code>executable</code> and <code>test</code> from the parent. Values of"
                     + " <code>fragments</code>, <code>toolchains</code>,"
@@ -810,10 +810,24 @@ public interface StarlarkRuleFunctionsApi {
             named = true,
             positional = false,
             defaultValue = "{}",
-            doc = "dictionary to declare all the (private) attributes of the subrule.")
+            doc = "dictionary to declare all the (private) attributes of the subrule."),
+        @Param(
+            name = "toolchains",
+            allowedTypes = {@ParamType(type = Sequence.class)},
+            named = true,
+            positional = false,
+            defaultValue = "[]",
+            doc =
+                "If set, the set of toolchains this subrule requires. The list can contain String,"
+                    + " Label, or StarlarkToolchainTypeApi objects, in any combination. Toolchains"
+                    + " will be found by checking the current platform, and provided to the subrule"
+                    + " implementation via <code>ctx.toolchains</code>.")
       },
       useStarlarkThread = true)
   StarlarkSubruleApi subrule(
-      StarlarkFunction implementation, Dict<?, ?> attrs, StarlarkThread thread)
+      StarlarkFunction implementation,
+      Dict<?, ?> attrs,
+      Sequence<?> toolchains,
+      StarlarkThread thread)
       throws EvalException;
 }

@@ -960,7 +960,7 @@ EOF
   BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1 bazel query 'deps(//:ok)' &>"$TEST_log" || \
     fail "Should pass with fake toolchain"
   expect_not_log "An error occurred during the fetch of repository 'local_config_cc'"
-  expect_log "@local_config_cc//:empty"
+  expect_log "@@bazel_tools~cc_configure_extension~local_config_cc//:empty"
 }
 
 function setup_workspace_layout_with_external_directory() {
@@ -1492,6 +1492,17 @@ function test_external_cc_test_local_sibling_repository_layout() {
       --strategy=local \
       --experimental_sibling_repository_layout \
       @other_repo//test >& $TEST_log || fail "Test should pass"
+
+  # Test cc compile action can hit the action cache. See
+  # https://github.com/bazelbuild/bazel/issues/17819
+  bazel shutdown
+
+  bazel test \
+      --test_output=errors \
+      --strategy=local \
+      --experimental_sibling_repository_layout \
+      @other_repo//test >& $TEST_log || fail "Test should pass"
+  expect_log "1 process: 1 internal"
 }
 
 function test_bazel_current_repository_define() {

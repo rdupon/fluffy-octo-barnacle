@@ -195,7 +195,6 @@ public abstract class AnalysisTestCase extends FoundationTestCase {
             analysisMock.getProductName());
     workspaceStatusActionFactory = new AnalysisTestUtil.DummyWorkspaceStatusActionFactory();
 
-    scratch.file(rootDirectory.getRelative("MODULE.bazel").getPathString(), "");
     moduleRoot = scratch.dir("modules");
     registry = FakeRegistry.DEFAULT_FACTORY.newFakeRegistry(moduleRoot.getPathString());
 
@@ -288,8 +287,8 @@ public abstract class AnalysisTestCase extends FoundationTestCase {
                 RepositoryDelegatorFunction.REPOSITORY_OVERRIDES, ImmutableMap.of()),
             PrecomputedValue.injected(ModuleFileFunction.MODULE_OVERRIDES, ImmutableMap.of()),
             PrecomputedValue.injected(
-                RepositoryDelegatorFunction.DEPENDENCY_FOR_UNCONDITIONAL_FETCHING,
-                RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY),
+                RepositoryDelegatorFunction.FORCE_FETCH,
+                RepositoryDelegatorFunction.FORCE_FETCH_DISABLED),
             PrecomputedValue.injected(
                 BuildInfoCollectionFunction.BUILD_INFO_FACTORIES,
                 ruleClassProvider.getBuildInfoFactoriesAsMap()),
@@ -352,6 +351,8 @@ public abstract class AnalysisTestCase extends FoundationTestCase {
     }
     if (defaultFlags().contains(Flag.ENABLE_BZLMOD)) {
       optionsParser.parse("--enable_bzlmod");
+    } else {
+      optionsParser.parse("--noenable_bzlmod");
     }
     optionsParser.parse(args);
 

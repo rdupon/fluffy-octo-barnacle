@@ -34,6 +34,7 @@ filegroup(
     visibility = [
         "//src/main/starlark/tests/builtins_bzl:__subpackages__",
         "//src/test/shell:__subpackages__",
+        "//src/test/tools/bzlmod:__subpackages__",
     ],
 )
 
@@ -193,6 +194,10 @@ sh_test(
     data = [
         ":test-deps",
         "@bazel_tools//tools/bash/runfiles",
+    ],
+    tags = [
+        # bzlmod usage requires network
+        "requires-network",
     ],
 )
 
@@ -1226,6 +1231,7 @@ sh_test(
         ":test-deps",
         "//src/tools/workspacelog:parser",
     ],
+    shard_count = 3,
     tags = [
         "no_windows",
         "requires-network",

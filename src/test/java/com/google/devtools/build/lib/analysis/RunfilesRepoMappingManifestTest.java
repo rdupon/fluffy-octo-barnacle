@@ -22,20 +22,9 @@ import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.actions.Action;
 import com.google.devtools.build.lib.actions.CommandLineExpansionException;
 import com.google.devtools.build.lib.analysis.util.BuildViewTestCase;
-import com.google.devtools.build.lib.bazel.bzlmod.BazelLockFileFunction;
-import com.google.devtools.build.lib.bazel.bzlmod.BazelModuleResolutionFunction;
-import com.google.devtools.build.lib.bazel.bzlmod.FakeRegistry;
-import com.google.devtools.build.lib.bazel.bzlmod.ModuleFileFunction;
-import com.google.devtools.build.lib.bazel.bzlmod.YankedVersionsUtil;
-import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.BazelCompatibilityMode;
-import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.CheckDirectDepsMode;
-import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.LockfileMode;
 import com.google.devtools.build.lib.rules.repository.RepositoryDirectoryDirtinessChecker;
-import com.google.devtools.build.lib.skyframe.PrecomputedValue;
-import com.google.devtools.build.lib.skyframe.PrecomputedValue.Injected;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutorRepositoryHelpersHolder;
 import com.google.devtools.build.lib.util.Fingerprint;
-import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import java.util.Map.Entry;
 import net.starlark.java.eval.EvalException;
@@ -48,25 +37,6 @@ import org.junit.runners.JUnit4;
 /** Tests that the repo mapping manifest file is properly generated for runfiles. */
 @RunWith(JUnit4.class)
 public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
-  private Path moduleRoot;
-  private FakeRegistry registry;
-
-  @Override
-  protected ImmutableList<Injected> extraPrecomputedValues() throws Exception {
-    moduleRoot = scratch.dir("modules");
-    registry = FakeRegistry.DEFAULT_FACTORY.newFakeRegistry(moduleRoot.getPathString());
-    return ImmutableList.of(
-        PrecomputedValue.injected(
-            ModuleFileFunction.REGISTRIES, ImmutableList.of(registry.getUrl())),
-        PrecomputedValue.injected(ModuleFileFunction.IGNORE_DEV_DEPS, false),
-        PrecomputedValue.injected(ModuleFileFunction.MODULE_OVERRIDES, ImmutableMap.of()),
-        PrecomputedValue.injected(
-            BazelModuleResolutionFunction.CHECK_DIRECT_DEPENDENCIES, CheckDirectDepsMode.WARNING),
-        PrecomputedValue.injected(
-            BazelModuleResolutionFunction.BAZEL_COMPATIBILITY_MODE, BazelCompatibilityMode.ERROR),
-        PrecomputedValue.injected(BazelLockFileFunction.LOCKFILE_MODE, LockfileMode.UPDATE),
-        PrecomputedValue.injected(YankedVersionsUtil.ALLOWED_YANKED_VERSIONS, ImmutableList.of()));
-  }
 
   @Override
   protected SkyframeExecutorRepositoryHelpersHolder getRepositoryHelpersHolder() {
@@ -74,11 +44,6 @@ public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
     // external repositories are enabled.
     return SkyframeExecutorRepositoryHelpersHolder.create(
         new RepositoryDirectoryDirtinessChecker());
-  }
-
-  @Before
-  public void enableBzlmod() throws Exception {
-    setBuildLanguageOptions("--enable_bzlmod");
   }
 
   /**
@@ -184,8 +149,8 @@ public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
 
     assertThat(getRepoMappingManifestForTarget("//:aaa"))
         .containsExactly(
-            ",aaa,_main",
-            ",aaa_ws,_main",
+            ",aaa," + getRuleClassProvider().getRunfilesPrefix(),
+            ",aaa_ws," + getRuleClassProvider().getRunfilesPrefix(),
             ",bbb,bbb~1.0",
             "bbb~1.0,bbb,bbb~1.0",
             "bbb~1.0,ddd,ddd~2.0",
@@ -254,7 +219,7 @@ public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
 
     assertThat(getRepoMappingManifestForTarget("//:tooled"))
         .containsExactly(
-            ",main,_main",
+            ",main," + getRuleClassProvider().getRunfilesPrefix(),
             "bare_rule~1.0,bare_rule,bare_rule~1.0",
             "tooled_rule~1.0,bare_rule,bare_rule~1.0")
         .inOrder();
@@ -269,6 +234,7 @@ public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
         "bazel_dep(name='bare_rule',version='1.0')");
     scratch.overwriteFile(
         "BUILD", "load('@bare_rule//:defs.bzl', 'bare_binary')", "bare_binary(name='aaa')");
+    invalidatePackages();
 
     RepoMappingManifestAction actionBeforeChange = getRepoMappingManifestActionForTarget("//:aaa");
 
@@ -288,6 +254,7 @@ public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
         "bazel_dep(name='bare_rule',version='1.0')");
     scratch.overwriteFile(
         "BUILD", "load('@bare_rule//:defs.bzl', 'bare_binary')", "bare_binary(name='aaa')");
+    invalidatePackages();
 
     RepoMappingManifestAction actionBeforeChange = getRepoMappingManifestActionForTarget("//:aaa");
 
@@ -320,6 +287,7 @@ public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
     scratch.overwriteFile(moduleRoot.getRelative("bbb~1.0").getRelative("BUILD").getPathString());
     scratch.overwriteFile(
         moduleRoot.getRelative("bbb~1.0").getRelative("def.bzl").getPathString(), "BBB = '1'");
+    invalidatePackages();
 
     RepoMappingManifestAction actionBeforeChange = getRepoMappingManifestActionForTarget("//:aaa");
 
@@ -391,6 +359,7 @@ public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
         moduleRoot.getRelative("ddd~1.0/BUILD").getPathString(),
         "load('@bare_rule//:defs.bzl', 'bare_binary')",
         "bare_binary(name='ddd')");
+    invalidatePackages();
 
     RunfilesSupport runfilesSupport = getRunfilesSupport("@aaa~1.0//:aaa");
     ImmutableList<String> runfilesPaths =
@@ -404,8 +373,8 @@ public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
     assertThat(runfilesPaths)
         .containsExactly(
             "aaa~1.0/aaa",
-            "_main/external/aaa~1.0/aaa",
-            "_main/path/to/pkg/symlink",
+            getRuleClassProvider().getRunfilesPrefix() + "/external/aaa~1.0/aaa",
+            getRuleClassProvider().getRunfilesPrefix() + "/path/to/pkg/symlink",
             "symlinks~1.0/path/to/pkg/root_symlink",
             "_repo_mapping");
 
@@ -414,9 +383,8 @@ public class RunfilesRepoMappingManifestTest extends BuildViewTestCase {
             // @aaa~1.0 contributes the top-level executable to runfiles.
             "aaa~1.0,aaa,aaa~1.0",
             // The symlink is staged under the main repository's runfiles directory and aaa has a
-            // repo mapping entry
-            // for it.
-            "aaa~1.0,my_module,_main",
+            // repo mapping entry for it.
+            "aaa~1.0,my_module," + getRuleClassProvider().getRunfilesPrefix(),
             // @symlinks~1.0 appears as the first segment of a root symlink.
             "aaa~1.0,symlinks,symlinks~1.0",
             "symlinks~1.0,symlinks,symlinks~1.0")

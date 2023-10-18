@@ -99,6 +99,17 @@ public abstract class CommonPrerequisiteValidator implements PrerequisiteValidat
       return;
     }
 
+    // Only verify visibility of implicit dependencies of the current aspect.
+    // Dependencies of other aspects as well as the rule itself are checked when they are
+    // evaluated.
+    Aspect mainAspect = context.getMainAspect();
+    if (mainAspect != null) {
+      if (!attribute.isImplicit()
+          || !mainAspect.getDefinition().getAttributes().containsKey(attrName)) {
+        return;
+      }
+    }
+
     // Determine if we should use the new visibility rules for tools.
     boolean toolCheckAtDefinition =
         context
@@ -118,16 +129,10 @@ public abstract class CommonPrerequisiteValidator implements PrerequisiteValidat
       // from the location of the definition that declares the attribute. Only perform this check
       // for the current aspect.
       Label implicitDefinition = null;
-      Aspect mainAspect = context.getMainAspect();
       if (mainAspect != null) {
-        // Only verify visibility of implicit dependencies of the current aspect. Implicit
-        // dependencies of other aspects as well as the rule itself are checked when they are
-        // evaluated.
-        if (mainAspect.getDefinition().getAttributes().containsKey(attrName)) {
-          StarlarkAspectClass aspectClass = (StarlarkAspectClass) mainAspect.getAspectClass();
-          // Never null since we already checked that the aspect is Starlark-defined.
-          implicitDefinition = checkNotNull(aspectClass.getExtensionLabel());
-        }
+        StarlarkAspectClass aspectClass = (StarlarkAspectClass) mainAspect.getAspectClass();
+        // Never null since we already checked that the aspect is Starlark-defined.
+        implicitDefinition = checkNotNull(aspectClass.getExtensionLabel());
       } else {
         // Never null since we already checked that the rule is a Starlark rule.
         implicitDefinition =
@@ -165,7 +170,6 @@ public abstract class CommonPrerequisiteValidator implements PrerequisiteValidat
       // TODO(plf): Add the PackageSpecificationProvider to the 'visibility' attribute.
       if (!attrName.equals("visibility")
           && !attrName.equals(FunctionSplitTransitionAllowlist.ATTRIBUTE_NAME)
-          && !attrName.equals(FunctionSplitTransitionAllowlist.LEGACY_ATTRIBUTE_NAME)
           && !containsPackageSpecificationProvider) {
         context.attributeError(
             attrName,

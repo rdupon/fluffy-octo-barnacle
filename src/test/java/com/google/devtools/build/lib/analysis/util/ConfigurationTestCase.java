@@ -138,18 +138,22 @@ public abstract class ConfigurationTestCase extends FoundationTestCase {
             PrecomputedValue.injected(
                 RepositoryDelegatorFunction.REPOSITORY_OVERRIDES, ImmutableMap.of()),
             PrecomputedValue.injected(
-                RepositoryDelegatorFunction.DEPENDENCY_FOR_UNCONDITIONAL_FETCHING,
-                RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY),
+                RepositoryDelegatorFunction.FORCE_FETCH,
+                RepositoryDelegatorFunction.FORCE_FETCH_DISABLED),
             PrecomputedValue.injected(
                 BuildInfoCollectionFunction.BUILD_INFO_FACTORIES,
                 ruleClassProvider.getBuildInfoFactoriesAsMap())));
     PackageOptions packageOptions = Options.getDefaults(PackageOptions.class);
     packageOptions.showLoadingProgress = true;
     packageOptions.globbingThreads = 7;
+    BuildLanguageOptions options = Options.getDefaults(BuildLanguageOptions.class);
+    // TODO: enable Bzlmod for this test case
+    // https://github.com/bazelbuild/bazel/issues/19824
+    options.enableBzlmod = false;
     skyframeExecutor.preparePackageLoading(
         pkgLocator,
         packageOptions,
-        Options.getDefaults(BuildLanguageOptions.class),
+        options,
         UUID.randomUUID(),
         ImmutableMap.of(),
         QuiescingExecutorsImpl.forTesting(),

@@ -80,8 +80,9 @@ java_library(
         ":action_execution_value",
         ":action_input_collected_event",
         ":action_input_map_helper",
+        ":action_input_metadata_provider",
         ":action_lookup_conflict_finding_value",
-        ":action_metadata_handler",
+        ":action_output_metadata_store",
         ":action_template_expansion_function",
         ":action_template_expansion_value",
         ":action_utils",
@@ -93,6 +94,7 @@ java_library(
         ":aspect_completion_value",
         ":aspect_creation_exception",
         ":aspect_key_creator",
+        ":base_target_prerequisites_supplier",
         ":build_driver_function",
         ":build_driver_key",
         ":build_driver_value",
@@ -447,7 +449,7 @@ java_library(
     name = "action_execution_value",
     srcs = ["ActionExecutionValue.java"],
     deps = [
-        ":output_store",
+        ":action_output_metadata_store",
         ":tree_artifact_value",
         "//src/main/java/com/google/devtools/build/lib/actions",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
@@ -502,15 +504,27 @@ java_library(
 )
 
 java_library(
-    name = "action_metadata_handler",
-    srcs = ["ActionMetadataHandler.java"],
+    name = "action_input_metadata_provider",
+    srcs = ["ActionInputMetadataProvider.java"],
     deps = [
-        ":output_store",
-        ":tree_artifact_value",
         "//src/main/java/com/google/devtools/build/lib/actions",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/actions:file_metadata",
         "//src/main/java/com/google/devtools/build/lib/actions:fileset_output_symlink",
+        "//src/main/java/com/google/devtools/build/lib/vfs:pathfragment",
+        "//third_party:guava",
+        "//third_party:jsr305",
+    ],
+)
+
+java_library(
+    name = "action_output_metadata_store",
+    srcs = ["ActionOutputMetadataStore.java"],
+    deps = [
+        ":tree_artifact_value",
+        "//src/main/java/com/google/devtools/build/lib/actions",
+        "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
+        "//src/main/java/com/google/devtools/build/lib/actions:file_metadata",
         "//src/main/java/com/google/devtools/build/lib/util/io",
         "//src/main/java/com/google/devtools/build/lib/vfs",
         "//src/main/java/com/google/devtools/build/lib/vfs:pathfragment",
@@ -1359,7 +1373,7 @@ java_library(
     ],
     deps = [
         ":action_execution_value",
-        ":action_metadata_handler",
+        ":action_output_metadata_store",
         ":directory_listing_state_value",
         ":sky_functions",
         ":sky_value_dirtiness_checker",
@@ -1573,19 +1587,6 @@ java_library(
     name = "mutable_supplier",
     srcs = ["MutableSupplier.java"],
     deps = ["//third_party:guava"],
-)
-
-java_library(
-    name = "output_store",
-    srcs = ["OutputStore.java"],
-    deps = [
-        ":tree_artifact_value",
-        "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
-        "//src/main/java/com/google/devtools/build/lib/actions:file_metadata",
-        "//src/main/java/com/google/devtools/build/lib/concurrent",
-        "//third_party:guava",
-        "//third_party:jsr305",
-    ],
 )
 
 java_library(
@@ -1883,6 +1884,18 @@ java_library(
     deps = [
         "//src/main/java/com/google/devtools/build/lib/cmdline",
         "//src/main/java/com/google/devtools/build/lib/packages",
+        "//third_party:jsr305",
+    ],
+)
+
+java_library(
+    name = "base_target_prerequisites_supplier",
+    srcs = ["BaseTargetPrerequisitesSupplier.java"],
+    deps = [
+        ":configured_target_key",
+        "//src/main/java/com/google/devtools/build/lib/analysis:config/build_configuration",
+        "//src/main/java/com/google/devtools/build/lib/analysis:configured_target_value",
+        "//src/main/java/com/google/devtools/build/lib/skyframe/config",
         "//third_party:jsr305",
     ],
 )

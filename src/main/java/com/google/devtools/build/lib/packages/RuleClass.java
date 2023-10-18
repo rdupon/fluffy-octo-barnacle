@@ -59,6 +59,7 @@ import com.google.devtools.build.lib.util.HashCodes;
 import com.google.devtools.build.lib.util.StringUtil;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.FormatMethod;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -750,6 +751,7 @@ public class RuleClass implements RuleClassData {
     private final String name;
     private ImmutableList<StarlarkThread.CallStackEntry> callstack = ImmutableList.of();
     private final RuleClassType type;
+    @Nullable private RuleClass starlarkParent = null;
     private final boolean starlark;
     private boolean starlarkTestable = false;
     private boolean documented;
@@ -800,22 +802,35 @@ public class RuleClass implements RuleClassData {
      * <p>The rule type affects the allowed names and the required attributes (see {@link
      * RuleClassType}).
      *
+     * @param parents There may be either multiple native {@code RuleClassType.ABSTRACT} rules or a
+     *     single Starlark rule.
      * @throws IllegalArgumentException if an attribute with the same name exists in more than one
      *     parent
      */
     public Builder(String name, RuleClassType type, boolean starlark, RuleClass... parents) {
+      Preconditions.checkArgument(
+          (parents.length == 1 && parents[0].isStarlark())
+              || Arrays.stream(parents).allMatch(rule -> !rule.isStarlark()));
       this.name = name;
       this.starlark = starlark;
       this.type = type;
       Preconditions.checkState(starlark || type != RuleClassType.PLACEHOLDER, name);
       this.documented = type != RuleClassType.ABSTRACT;
       addAttribute(NAME_ATTRIBUTE);
+      if (parents.length == 1
+          && parents[0].isStarlark()
+          && parents[0].getRuleClassType() != RuleClassType.ABSTRACT) {
+        // the condition removes {@link StarlarkRuleClasssFunctions.baseRule} and binaryBaseRule,
+        // which are marked as Starlark (because of Stardoc) && abstract at the same time
+        starlarkParent = parents[0];
+        Preconditions.checkArgument(starlarkParent.isExtendable());
+      }
       for (RuleClass parent : parents) {
         if (parent.getValidityPredicate() != PredicatesWithMessage.<Rule>alwaysTrue()) {
           setValidityPredicate(parent.getValidityPredicate());
         }
-        configurationFragmentPolicy
-            .includeConfigurationFragmentsFrom(parent.getConfigurationFragmentPolicy());
+        configurationFragmentPolicy.includeConfigurationFragmentsFrom(
+            parent.getConfigurationFragmentPolicy());
         supportsConstraintChecking = parent.supportsConstraintChecking;
 
         addToolchainTypes(parent.getToolchainTypes());
@@ -914,12 +929,23 @@ public class RuleClass implements RuleClassData {
         this.useToolchainResolution(ToolchainResolutionMode.DISABLED);
       }
 
+      boolean extendable =
+          starlark
+              && (type == RuleClassType.NORMAL || type == RuleClassType.TEST)
+              && implicitOutputsFunction == ImplicitOutputsFunction.NONE
+              && outputsToBindir
+              && !starlarkTestable
+              && !isAnalysisTest
+              && buildSetting == null;
+
       return new RuleClass(
           name,
           callstack,
           key,
           type,
+          starlarkParent,
           starlark,
+          extendable,
           starlarkTestable,
           documented,
           outputsToBindir,
@@ -1230,6 +1256,48 @@ public class RuleClass implements RuleClassData {
       return this;
     }
 
+    @FormatMethod
+    private static void failIf(boolean condition, String message, Object... args)
+        throws EvalException {
+      if (condition) {
+        throw Starlark.errorf(message, args);
+      }
+    }
+
+    /**
+     * Overrides the attribute with the same name. This method does additional checks required for
+     * overriding attributes in Starlark
+     */
+    @CanIgnoreReturnValue
+    public Builder override(Attribute attr) throws EvalException {
+      Attribute parentAttr = attributes.get(attr.getName());
+      failIf(
+          !parentAttr.starlarkDefined(),
+          "attribute `%s`: built-in attributes cannot be overridden.",
+          parentAttr.getPublicName());
+      failIf(
+          !parentAttr.isPublic(),
+          "attribute `%s`: private attributes cannot be overridden.",
+          parentAttr.getPublicName());
+      failIf(
+          parentAttr.getType() != BuildType.LABEL_LIST && parentAttr.getType() != BuildType.LABEL,
+          "attribute `%s`: Only label types maybe be overridden.",
+          parentAttr.getPublicName());
+      failIf(
+          parentAttr.getType() != attr.getType(),
+          "attribute `%s`: Types of parent and child's attributes mismatch.",
+          parentAttr.getPublicName());
+      attr.failIfNotAValidOverride();
+
+      Attribute.Builder<?> attrBuilder = copy(attr.getName());
+      if (attr.getDefaultValueUnchecked() != null) {
+        attrBuilder.defaultValue(attr.getDefaultValueUnchecked());
+      }
+      attrBuilder.addAspects(attr.getAspectsList());
+      override(attrBuilder);
+      return this;
+    }
+
     /**
      * Builds attribute from the attribute builder and overrides the attribute with the same name.
      *
@@ -1244,6 +1312,10 @@ public class RuleClass implements RuleClassData {
     /** True if the rule class contains an attribute named {@code name}. */
     public boolean contains(String name) {
       return attributes.containsKey(name);
+    }
+
+    public Attribute getAttribute(String name) {
+      return attributes.get(name);
     }
 
     /** Returns a list of all attributes added to this Builder so far. */
@@ -1562,7 +1634,9 @@ public class RuleClass implements RuleClassData {
   private final String targetKind;
 
   private final RuleClassType type;
+  @Nullable private final RuleClass starlarkParent;
   private final boolean isStarlark;
+  private final boolean extendable;
   private final boolean starlarkTestable;
   private final boolean documented;
   private final boolean outputsToBindir;
@@ -1695,7 +1769,9 @@ public class RuleClass implements RuleClassData {
       ImmutableList<StarlarkThread.CallStackEntry> callstack,
       String key,
       RuleClassType type,
+      RuleClass starlarkParent,
       boolean isStarlark,
+      boolean extendable,
       boolean starlarkTestable,
       boolean documented,
       boolean outputsToBindir,
@@ -1730,7 +1806,9 @@ public class RuleClass implements RuleClassData {
     this.callstack = callstack;
     this.key = key;
     this.type = type;
+    this.starlarkParent = starlarkParent;
     this.isStarlark = isStarlark;
+    this.extendable = extendable;
     this.targetKind = name + Rule.targetKindSuffix();
     this.starlarkTestable = starlarkTestable;
     this.documented = documented;
@@ -1822,6 +1900,10 @@ public class RuleClass implements RuleClassData {
   @Override
   public String getName() {
     return name;
+  }
+
+  public RuleClass getStarlarkParent() {
+    return this.starlarkParent;
   }
 
   /**
@@ -2560,6 +2642,11 @@ public class RuleClass implements RuleClassData {
   @Override
   public boolean isStarlark() {
     return isStarlark;
+  }
+
+  /** Returns true if this RuleClass can be extended. */
+  public boolean isExtendable() {
+    return extendable;
   }
 
   /** Returns true if this RuleClass is Starlark-defined and is subject to analysis-time tests. */

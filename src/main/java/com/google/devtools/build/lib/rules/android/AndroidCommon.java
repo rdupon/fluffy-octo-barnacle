@@ -188,7 +188,8 @@ public class AndroidCommon {
       Artifact classesDex,
       List<String> dexOptions,
       int minSdkVersion,
-      Artifact mainDexList) {
+      Artifact mainDexList)
+      throws RuleErrorException {
     CustomCommandLine.Builder commandLine = CustomCommandLine.builder();
     commandLine.add("--dex");
 
@@ -413,7 +414,7 @@ public class AndroidCommon {
   }
 
   private void packResourceSourceJar(JavaSemantics javaSemantics, Artifact resourcesJavaSrcJar)
-      throws InterruptedException {
+      throws InterruptedException, RuleErrorException {
 
     resourceSourceJar =
         ruleContext.getImplicitOutputArtifact(AndroidRuleClasses.ANDROID_RESOURCES_SOURCE_JAR);
@@ -678,7 +679,7 @@ public class AndroidCommon {
             javaCommon.getJavaCompilationArtifacts(),
             attributes,
             asNeverLink,
-            helper.getBootclasspathOrDefault()));
+            helper.getBootclasspathOrDefault().bootclasspath()));
 
     transitiveNeverlinkLibraries =
         collectTransitiveNeverlinkLibraries(
@@ -900,7 +901,8 @@ public class AndroidCommon {
       JavaSemantics semantics,
       DataBindingContext dataBindingContext,
       boolean isLibrary,
-      boolean shouldCompileJavaSrcs) {
+      boolean shouldCompileJavaSrcs)
+      throws RuleErrorException {
 
     ImmutableList<Artifact> ruleSources = ruleContext.getPrerequisiteArtifacts("srcs").list();
 

@@ -136,8 +136,6 @@ public abstract class SkyframeQueryHelper extends AbstractQueryHelper<Target> {
     registry = FakeRegistry.DEFAULT_FACTORY.newFakeRegistry(moduleRoot.getPathString());
     writeFile("MODULE.bazel", "module( name = \"root\", version = \"1.0\")");
 
-    initTargetPatternEvaluator(analysisMock.createRuleClassProvider());
-
     MockToolsConfig mockToolsConfig = new MockToolsConfig(rootDirectory);
     analysisMock.setupMockClient(mockToolsConfig);
     analysisMock.setupMockWorkspaceFiles(directories.getEmbeddedBinariesRoot());
@@ -145,6 +143,8 @@ public abstract class SkyframeQueryHelper extends AbstractQueryHelper<Target> {
     analysisMock.ccSupport().setup(mockToolsConfig);
     analysisMock.pySupport().setup(mockToolsConfig);
     performAdditionalClientSetup(mockToolsConfig);
+
+    initTargetPatternEvaluator(analysisMock.createRuleClassProvider());
 
     this.queryEnvironmentFactory = makeQueryEnvironmentFactory();
   }
@@ -405,37 +405,27 @@ public abstract class SkyframeQueryHelper extends AbstractQueryHelper<Target> {
             .setSyscallCache(delegatingSyscallCache)
             .build();
     skyframeExecutor.injectExtraPrecomputedValues(
-        ImmutableList.<PrecomputedValue.Injected>builder()
-            .add(
-                PrecomputedValue.injected(
-                    RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE,
-                    Optional.empty()))
-            .add(
-                PrecomputedValue.injected(
-                    RepositoryDelegatorFunction.REPOSITORY_OVERRIDES, ImmutableMap.of()))
-            .add(PrecomputedValue.injected(ModuleFileFunction.MODULE_OVERRIDES, ImmutableMap.of()))
-            .add(
-                PrecomputedValue.injected(
-                    RepositoryDelegatorFunction.DEPENDENCY_FOR_UNCONDITIONAL_FETCHING,
-                    RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY))
-            .add(
-                PrecomputedValue.injected(
-                    ModuleFileFunction.REGISTRIES, ImmutableList.of(registry.getUrl())))
-            .add(PrecomputedValue.injected(ModuleFileFunction.IGNORE_DEV_DEPS, false))
-            .add(
-                PrecomputedValue.injected(
-                    BazelModuleResolutionFunction.CHECK_DIRECT_DEPENDENCIES,
-                    CheckDirectDepsMode.WARNING))
-            .add(
-                PrecomputedValue.injected(
-                    YankedVersionsUtil.ALLOWED_YANKED_VERSIONS, ImmutableList.of()))
-            .add(
-                PrecomputedValue.injected(
-                    BazelModuleResolutionFunction.BAZEL_COMPATIBILITY_MODE,
-                    BazelCompatibilityMode.ERROR))
-            .add(
-                PrecomputedValue.injected(BazelLockFileFunction.LOCKFILE_MODE, LockfileMode.UPDATE))
-            .build());
+        ImmutableList.of(
+            PrecomputedValue.injected(
+                RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE, Optional.empty()),
+            PrecomputedValue.injected(
+                RepositoryDelegatorFunction.REPOSITORY_OVERRIDES, ImmutableMap.of()),
+            PrecomputedValue.injected(ModuleFileFunction.MODULE_OVERRIDES, ImmutableMap.of()),
+            PrecomputedValue.injected(
+                RepositoryDelegatorFunction.FORCE_FETCH,
+                RepositoryDelegatorFunction.FORCE_FETCH_DISABLED),
+            PrecomputedValue.injected(
+                ModuleFileFunction.REGISTRIES, ImmutableList.of(registry.getUrl())),
+            PrecomputedValue.injected(ModuleFileFunction.IGNORE_DEV_DEPS, false),
+            PrecomputedValue.injected(
+                BazelModuleResolutionFunction.CHECK_DIRECT_DEPENDENCIES,
+                CheckDirectDepsMode.WARNING),
+            PrecomputedValue.injected(
+                YankedVersionsUtil.ALLOWED_YANKED_VERSIONS, ImmutableList.of()),
+            PrecomputedValue.injected(
+                BazelModuleResolutionFunction.BAZEL_COMPATIBILITY_MODE,
+                BazelCompatibilityMode.ERROR),
+            PrecomputedValue.injected(BazelLockFileFunction.LOCKFILE_MODE, LockfileMode.UPDATE)));
     SkyframeExecutorTestHelper.process(skyframeExecutor);
     return skyframeExecutor;
   }

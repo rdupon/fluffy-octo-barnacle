@@ -203,7 +203,9 @@ def _jar_and_target_arg_mapper(jar):
     return jar.path + "," + str(jar.owner)
 
 def _get_feature_config(ctx):
-    cc_toolchain = cc_helper.find_cpp_toolchain(ctx)
+    cc_toolchain = cc_helper.find_cpp_toolchain(ctx, mandatory = False)
+    if not cc_toolchain:
+        return None
     feature_config = cc_common.configure_features(
         ctx = ctx,
         cc_toolchain = cc_toolchain,
@@ -378,15 +380,17 @@ def _shell_escape(s):
 def _tokenize_javacopts(ctx, opts):
     """Tokenizes a list or depset of options to a list.
 
+    Iff opts is a depset, we reverse the flattened list to ensure right-most
+    duplicates are preserved in their correct position.
+
     Args:
         ctx: (RuleContext) the rule context
         opts: (depset[str]|[str]) the javac options to tokenize
-
     Returns:
         [str] list of tokenized options
     """
     if hasattr(opts, "to_list"):
-        opts = opts.to_list()
+        opts = reversed(opts.to_list())
     return [
         token
         for opt in opts
@@ -397,7 +401,7 @@ def _detokenize_javacopts(opts):
     """Detokenizes a list of options to a depset.
 
     Args:
-        opts: (depset[str]) the javac options to tokenize
+        opts: ([str]) the javac options to detokenize
 
     Returns:
         (depset[str]) depset of detokenized options
@@ -406,6 +410,35 @@ def _detokenize_javacopts(opts):
         [" ".join([_shell_escape(opt) for opt in opts])],
         order = "preorder",
     )
+
+def _derive_output_file(ctx, base_file, *, name_suffix = "", extension = None, extension_suffix = ""):
+    """Declares a new file whose name is derived from the given file
+
+    This method allows appending a suffix to the name (before extension), changing
+    the extension or appending a suffix after the extension. The new file is declared
+    as a sibling of the given base file. At least one of the three options must be
+    specified. It is an error to specify both `extension` and `extension_suffix`.
+
+    Args:
+        ctx: (RuleContext) the rule context.
+        base_file: (File) the file from which to derive the resultant file.
+        name_suffix: (str) Optional. The suffix to append to the name before the
+        extension.
+        extension: (str) Optional. The new extension to use (without '.'). By default,
+        the base_file's extension is used.
+        extension_suffix: (str) Optional. The suffix to append to the base_file's extension
+
+    Returns:
+        (File) the derived file
+    """
+    if not name_suffix and not extension_suffix and not extension:
+        fail("At least one of name_suffix, extension or extension_suffix is required")
+    if extension and extension_suffix:
+        fail("only one of extension or extension_suffix can be specified")
+    if extension == None:
+        extension = base_file.extension
+    new_basename = paths.replace_extension(base_file.basename, name_suffix + "." + extension + extension_suffix)
+    return ctx.actions.declare_file(new_basename, sibling = base_file)
 
 helper = struct(
     collect_all_targets_as_deps = _collect_all_targets_as_deps,
@@ -432,4 +465,5 @@ helper = struct(
     shell_escape = _shell_escape,
     tokenize_javacopts = _tokenize_javacopts,
     detokenize_javacopts = _detokenize_javacopts,
+    derive_output_file = _derive_output_file,
 )

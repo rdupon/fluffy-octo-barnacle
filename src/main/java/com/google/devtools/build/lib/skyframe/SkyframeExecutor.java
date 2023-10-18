@@ -99,9 +99,9 @@ import com.google.devtools.build.lib.analysis.config.CoreOptions;
 import com.google.devtools.build.lib.analysis.config.InvalidConfigurationException;
 import com.google.devtools.build.lib.analysis.constraints.RuleContextConstraintSemantics;
 import com.google.devtools.build.lib.analysis.producers.ConfiguredTargetAndDataProducer;
+import com.google.devtools.build.lib.bazel.bzlmod.BazelDepGraphValue;
 import com.google.devtools.build.lib.bazel.bzlmod.BzlmodRepoRuleValue;
 import com.google.devtools.build.lib.bazel.repository.RepositoryOptions;
-import com.google.devtools.build.lib.bugreport.BugReport;
 import com.google.devtools.build.lib.bugreport.BugReporter;
 import com.google.devtools.build.lib.buildtool.BuildRequestOptions;
 import com.google.devtools.build.lib.cmdline.Label;
@@ -110,7 +110,6 @@ import com.google.devtools.build.lib.cmdline.PackageIdentifier;
 import com.google.devtools.build.lib.cmdline.RepositoryMapping;
 import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.cmdline.TargetParsingException;
-import com.google.devtools.build.lib.collect.nestedset.ArtifactNestedSetKey;
 import com.google.devtools.build.lib.concurrent.ExecutorUtil;
 import com.google.devtools.build.lib.concurrent.NamedForkJoinPool;
 import com.google.devtools.build.lib.concurrent.QuiescingExecutor;
@@ -639,7 +638,8 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
         new AspectFunction(
             new BuildViewProvider(),
             shouldStoreTransitivePackagesInLoadingAndAnalysis(),
-            this::getExistingPackage));
+            this::getExistingPackage,
+            new BaseTargetPrerequisitesSupplierImpl()));
     map.put(SkyFunctions.TOP_LEVEL_ASPECTS, new ToplevelStarlarkAspectFunction());
     map.put(
         SkyFunctions.BUILD_TOP_LEVEL_ASPECTS_DETAILS, new BuildTopLevelAspectsDetailsFunction());
@@ -656,7 +656,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
     map.put(SkyFunctions.BASELINE_OPTIONS, new BaselineOptionsFunction());
     map.put(
         SkyFunctions.STARLARK_BUILD_SETTINGS_DETAILS, new StarlarkBuildSettingsDetailsFunction());
-    map.put(SkyFunctions.WORKSPACE_NAME, new WorkspaceNameFunction());
+    map.put(SkyFunctions.WORKSPACE_NAME, new WorkspaceNameFunction(ruleClassProvider));
     map.put(
         WorkspaceFileValue.WORKSPACE_FILE,
         new WorkspaceFileFunction(
@@ -673,6 +673,16 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
               throw new IllegalStateException("supposed to be unused");
             });
     map.put(SkyFunctions.EXTERNAL_PACKAGE, new ExternalPackageFunction(externalPackageHelper));
+    // Inject an empty default BAZEL_DEP_GRAPH SkyFunction for Blaze, it'll be overridden by
+    // BazelRepositoryModule in Bazel
+    map.put(
+        SkyFunctions.BAZEL_DEP_GRAPH,
+        new SkyFunction() {
+          @Override
+          public SkyValue compute(SkyKey skyKey, Environment env) {
+            return BazelDepGraphValue.createEmptyDepGraph();
+          }
+        });
     map.put(
         BzlmodRepoRuleValue.BZLMOD_REPO_RULE,
         new BzlmodRepoRuleFunction(ruleClassProvider, directories));
@@ -715,7 +725,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
     map.put(SkyFunctions.REGISTERED_TOOLCHAINS, new RegisteredToolchainsFunction());
     map.put(SkyFunctions.SINGLE_TOOLCHAIN_RESOLUTION, new SingleToolchainResolutionFunction());
     map.put(SkyFunctions.TOOLCHAIN_RESOLUTION, new ToolchainResolutionFunction());
-    map.put(SkyFunctions.REPOSITORY_MAPPING, new RepositoryMappingFunction());
+    map.put(SkyFunctions.REPOSITORY_MAPPING, new RepositoryMappingFunction(ruleClassProvider));
     map.put(SkyFunctions.RESOLVED_FILE, new ResolvedFileFunction());
     map.put(
         SkyFunctions.PLATFORM_MAPPING,
@@ -1024,11 +1034,6 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
         : GlobbingStrategy.NON_SKYFRAME;
   }
 
-  @ForOverride
-  protected boolean shouldDeleteActionNodesWhenDroppingAnalysis() {
-    return true;
-  }
-
   /**
    * If not null, this is the only source root in the build, corresponding to the single element in
    * a single-element package path. Such a single-source-root build need not plant the execroot
@@ -1201,28 +1206,6 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
       ImmutableSet<ConfiguredTarget> topLevelTargets, ImmutableSet<AspectKey> topLevelAspects);
 
   protected abstract void dropConfiguredTargetsNow(final ExtendedEventHandler eventHandler);
-
-  protected final void deleteAnalysisNodes() {
-    memoizingEvaluator.delete(
-        shouldDeleteActionNodesWhenDroppingAnalysis()
-            ? SkyframeExecutor::analysisInvalidatingPredicateWithActions
-            : SkyframeExecutor::analysisInvalidatingPredicate);
-  }
-
-  // We delete any value that can hold an action -- all subclasses of ActionLookupKey.
-  // Also remove ArtifactNestedSetValues to prevent memory leak (b/143940221).
-  // Also BuildConfigurationKey to prevent memory leak (b/191875929).
-  private static boolean analysisInvalidatingPredicate(SkyKey key) {
-    return key instanceof ArtifactNestedSetKey
-        || key instanceof ActionLookupKey
-        || key instanceof BuildConfigurationKey;
-  }
-
-  // Also remove ActionLookupData since all such nodes depend on ActionLookupKey nodes and deleting
-  // en masse is cheaper than deleting via graph traversal (b/192863968).
-  private static boolean analysisInvalidatingPredicateWithActions(SkyKey key) {
-    return analysisInvalidatingPredicate(key) || key instanceof ActionLookupData;
-  }
 
   private WorkspaceStatusAction makeWorkspaceStatusAction(String workspaceName) {
     WorkspaceStatusAction.Environment env =
@@ -2737,7 +2720,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
           DetailedExitCode.of(
               FailureDetail.newBuilder()
                   .setExternalRepository(FailureDetails.ExternalRepository.getDefaultInstance())
-                  .setMessage("unknown error during computation of main repo mapping")
+                  .setMessage("error during computation of main repo mapping: " + e.getMessage())
                   .build()),
           e);
     }
@@ -3762,7 +3745,8 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
                   /* transitionKeys= */ ImmutableList.of(),
                   TransitiveDependencyState.createForTesting(),
                   sink,
-                  /* outputIndex= */ 0),
+                  /* outputIndex= */ 0,
+                  /* baseTargetPrerequisitesSupplier= */ null),
               memoizingEvaluator,
               getEvaluationContextForTesting(eventHandler));
     }
@@ -3789,5 +3773,22 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
         .setParallelism(DEFAULT_THREAD_COUNT)
         .setEventHandler(eventHandler)
         .build();
+  }
+
+  private final class BaseTargetPrerequisitesSupplierImpl
+      implements BaseTargetPrerequisitesSupplier {
+    @Override
+    @Nullable
+    public ConfiguredTargetValue getPrerequisite(ConfiguredTargetKey key)
+        throws InterruptedException {
+      return (ConfiguredTargetValue) memoizingEvaluator.getExistingValue(key);
+    }
+
+    @Override
+    @Nullable
+    public BuildConfigurationValue getPrerequisiteConfiguration(BuildConfigurationKey key)
+        throws InterruptedException {
+      return (BuildConfigurationValue) memoizingEvaluator.getExistingValue(key);
+    }
   }
 }

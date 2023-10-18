@@ -185,7 +185,7 @@ EOF
 
   bazel build //zoo:ball-pit >& $TEST_log && \
     fail "Expected build to fail"
-  expect_log "no such package '@common//carnivore'"
+  expect_log "No repository visible as '@common' from main repository"
 }
 
 function test_new_local_repository_with_build_file() {
@@ -299,11 +299,6 @@ EOF
   bazel run //zoo:ball-pit >& $TEST_log || fail "Failed to build/run zoo"
   expect_not_log "Tra-la!"
   expect_log "Growl!"
-}
-
-function test_default_ws() {
-  bazel fetch //external:main || fail "Fetch failed"
-  bazel build //external:main >& $TEST_log || fail "Failed to build java"
 }
 
 function test_external_hdrs() {

@@ -57,10 +57,12 @@ import com.google.devtools.build.lib.actions.ArtifactPathResolver;
 import com.google.devtools.build.lib.actions.DiscoveredInputsEvent;
 import com.google.devtools.build.lib.actions.FileArtifactValue;
 import com.google.devtools.build.lib.actions.FilesetOutputSymlink;
+import com.google.devtools.build.lib.actions.InputMetadataProvider;
 import com.google.devtools.build.lib.actions.LostInputsActionExecutionException;
 import com.google.devtools.build.lib.actions.MissingInputFileException;
 import com.google.devtools.build.lib.actions.PackageRootResolver;
 import com.google.devtools.build.lib.actions.SpawnMetrics;
+import com.google.devtools.build.lib.actions.cache.OutputMetadataStore;
 import com.google.devtools.build.lib.analysis.BlazeDirectories;
 import com.google.devtools.build.lib.bugreport.BugReport;
 import com.google.devtools.build.lib.bugreport.BugReporter;
@@ -762,17 +764,22 @@ public final class ActionExecutionFunction implements SkyFunction {
     ArtifactPathResolver pathResolver =
         ArtifactPathResolver.createPathResolver(
             state.actionFileSystem, skyframeActionExecutor.getExecRoot());
-    ActionMetadataHandler metadataHandler =
-        ActionMetadataHandler.create(
+
+    ActionInputMetadataProvider inputMetadataProvider =
+        new ActionInputMetadataProvider(
+            skyframeActionExecutor.getExecRoot().asFragment(),
             state.inputArtifactData,
+            expandedFilesets);
+
+    ActionOutputMetadataStore outputMetadataStore =
+        ActionOutputMetadataStore.create(
             skyframeActionExecutor.useArchivedTreeArtifacts(action),
             skyframeActionExecutor.getOutputPermissions(),
             ImmutableSet.copyOf(action.getOutputs()),
             skyframeActionExecutor.getXattrProvider(),
             tsgm.get(),
             pathResolver,
-            skyframeActionExecutor.getExecRoot().asFragment(),
-            expandedFilesets);
+            skyframeActionExecutor.getExecRoot().asFragment());
 
     // We only need to check the action cache if we haven't done it on a previous run.
     if (!state.hasCheckedActionCache()) {
@@ -780,8 +787,8 @@ public final class ActionExecutionFunction implements SkyFunction {
           skyframeActionExecutor.checkActionCache(
               env.getListener(),
               action,
-              metadataHandler,
-              metadataHandler,
+              inputMetadataProvider,
+              outputMetadataStore,
               artifactExpander,
               actionStartTime,
               state.allInputs.actionCacheInputs,
@@ -795,11 +802,11 @@ public final class ActionExecutionFunction implements SkyFunction {
           "Error, we're not re-executing a "
               + "SkyframeAwareAction which should be re-executed unconditionally. Action: %s",
           action);
-      return ActionExecutionValue.createFromOutputStore(
-          metadataHandler.getOutputStore(), /* outputSymlinks= */ ImmutableList.of(), action);
+      return ActionExecutionValue.createFromOutputMetadataStore(
+          outputMetadataStore, /* outputSymlinks= */ ImmutableList.of(), action);
     }
 
-    metadataHandler.prepareForActionExecution();
+    outputMetadataStore.prepareForActionExecution();
 
     if (action.discoversInputs()) {
       Duration discoveredInputsDuration = Duration.ZERO;
@@ -813,8 +820,8 @@ public final class ActionExecutionFunction implements SkyFunction {
               skyframeActionExecutor.discoverInputs(
                   action,
                   actionLookupData,
-                  metadataHandler,
-                  metadataHandler,
+                  inputMetadataProvider,
+                  outputMetadataStore,
                   env,
                   state.actionFileSystem);
         }
@@ -852,7 +859,8 @@ public final class ActionExecutionFunction implements SkyFunction {
     return skyframeActionExecutor.executeAction(
         env,
         action,
-        metadataHandler,
+        inputMetadataProvider,
+        outputMetadataStore,
         actionStartTime,
         actionLookupData,
         artifactExpander,
@@ -876,12 +884,13 @@ public final class ActionExecutionFunction implements SkyFunction {
     public void run(
         Environment env,
         Action action,
-        ActionMetadataHandler metadataHandler,
+        InputMetadataProvider inputMetadataProvider,
+        OutputMetadataStore outputMetadataStore,
         Map<String, String> clientEnv)
         throws InterruptedException, ActionExecutionException {
       // TODO(b/160603797): For the sake of action key computation, we should not need
-      //  state.filesetsInsideRunfiles. In fact, for the metadataHandler, we are guaranteed to not
-      //  expand any filesets since we request metadata for input/output Artifacts only.
+      //  state.filesetsInsideRunfiles. In fact, for the outputMetadataStore, we are guaranteed to
+      // not expand any filesets since we request metadata for input/output Artifacts only.
       ImmutableMap<Artifact, ImmutableList<FilesetOutputSymlink>> expandedFilesets =
           state.getExpandedFilesets();
       if (action.discoversInputs()) {
@@ -894,8 +903,8 @@ public final class ActionExecutionFunction implements SkyFunction {
       checkState(!env.valuesMissing(), action);
       skyframeActionExecutor.updateActionCache(
           action,
-          metadataHandler,
-          metadataHandler,
+          inputMetadataProvider,
+          outputMetadataStore,
           new Artifact.ArtifactExpanderImpl(
               // Skipping the filesets in runfiles since those cannot participate in command line
               // creation.

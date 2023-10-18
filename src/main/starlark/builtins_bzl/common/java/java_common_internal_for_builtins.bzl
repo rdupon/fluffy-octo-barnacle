@@ -28,35 +28,6 @@ load(":common/paths.bzl", "paths")
 
 _java_common_internal = _builtins.internal.java_common_internal_do_not_use
 
-def _derive_output_file(ctx, base_file, *, name_suffix = "", extension = None, extension_suffix = ""):
-    """Declares a new file whose name is derived from the given file
-
-    This method allows appending a suffix to the name (before extension), changing
-    the extension or appending a suffix after the extension. The new file is declared
-    as a sibling of the given base file. At least one of the three options must be
-    specified. It is an error to specify both `extension` and `extension_suffix`.
-
-    Args:
-        ctx: (RuleContext) the rule context.
-        base_file: (File) the file from which to derive the resultant file.
-        name_suffix: (str) Optional. The suffix to append to the name before the
-        extension.
-        extension: (str) Optional. The new extension to use (without '.'). By default,
-        the base_file's extension is used.
-        extension_suffix: (str) Optional. The suffix to append to the base_file's extension
-
-    Returns:
-        (File) the derived file
-    """
-    if not name_suffix and not extension_suffix and not extension:
-        fail("At least one of name_suffix, extension or extension_suffix is required")
-    if extension and extension_suffix:
-        fail("only one of extension or extension_suffix can be specified")
-    if extension == None:
-        extension = base_file.extension
-    new_basename = paths.replace_extension(base_file.basename, name_suffix + "." + extension + extension_suffix)
-    return ctx.actions.declare_file(new_basename, sibling = base_file)
-
 def compile(
         ctx,
         output,
@@ -163,7 +134,7 @@ def compile(
             ["-Abazel.repository=" + ctx.label.workspace_name],
             order = "preorder",
         ))
-    for package_config in java_toolchain.package_configuration():
+    for package_config in java_toolchain._package_configuration:
         if package_config.matches(ctx.label):
             all_javac_opts.append(package_config.javac_opts(as_depset = True))
 
@@ -171,15 +142,15 @@ def compile(
         ["--add-exports=%s=ALL-UNNAMED" % x for x in add_exports],
         order = "preorder",
     ))
-    all_javac_opts.append(depset(
-        ["--add-opens=%s=ALL-UNNAMED" % x for x in add_opens],
-        order = "preorder",
-    ))
 
     # detokenize target's javacopts, it will be tokenized before compilation
     all_javac_opts.append(helper.detokenize_javacopts(helper.tokenize_javacopts(ctx, javac_opts)))
 
-    all_javac_opts = depset(order = "preorder", transitive = all_javac_opts)
+    # we reverse the list of javacopts depsets, so that we keep the right-most set
+    # in case it's deduped. When this depset is flattened, we will reverse again,
+    # and then tokenize before passing to javac. This way, right-most javacopts will
+    # be retained and "win out".
+    all_javac_opts = depset(order = "preorder", transitive = reversed(all_javac_opts))
 
     # Optimization: skip this if there are no annotation processors, to avoid unnecessarily
     # disabling the direct classpath optimization if `enable_annotation_processor = False`
@@ -219,8 +190,8 @@ def compile(
         compile_jar = output
         compile_deps_proto = None
     elif _should_use_header_compilation(ctx, java_toolchain):
-        compile_jar = _derive_output_file(ctx, output, name_suffix = "-hjar", extension = "jar")
-        compile_deps_proto = _derive_output_file(ctx, output, name_suffix = "-hjar", extension = "jdeps")
+        compile_jar = helper.derive_output_file(ctx, output, name_suffix = "-hjar", extension = "jar")
+        compile_deps_proto = helper.derive_output_file(ctx, output, name_suffix = "-hjar", extension = "jdeps")
         _java_common_internal.create_header_compilation_action(
             ctx,
             java_toolchain,
@@ -279,16 +250,16 @@ def compile(
             resource_jars,
         )
     else:
-        native_headers_jar = _derive_output_file(ctx, output, name_suffix = "-native-header")
-        manifest_proto = _derive_output_file(ctx, output, extension_suffix = "_manifest_proto")
+        native_headers_jar = helper.derive_output_file(ctx, output, name_suffix = "-native-header")
+        manifest_proto = helper.derive_output_file(ctx, output, extension_suffix = "_manifest_proto")
         deps_proto = None
         if ctx.fragments.java.generate_java_deps() and has_sources:
-            deps_proto = _derive_output_file(ctx, output, extension = "jdeps")
+            deps_proto = helper.derive_output_file(ctx, output, extension = "jdeps")
         generated_class_jar = None
         generated_source_jar = None
         if uses_annotation_processing:
-            generated_class_jar = _derive_output_file(ctx, output, name_suffix = "-gen")
-            generated_source_jar = _derive_output_file(ctx, output, name_suffix = "-gensrc")
+            generated_class_jar = helper.derive_output_file(ctx, output, name_suffix = "-gen")
+            generated_source_jar = helper.derive_output_file(ctx, output, name_suffix = "-gensrc")
         _java_common_internal.create_compilation_action(
             ctx,
             java_toolchain,
@@ -321,7 +292,7 @@ def compile(
 
     create_output_source_jar = len(source_files) > 0 or source_jars != [output_source_jar]
     if not output_source_jar:
-        output_source_jar = _derive_output_file(ctx, output, name_suffix = "-src", extension = "jar")
+        output_source_jar = helper.derive_output_file(ctx, output, name_suffix = "-src", extension = "jar")
     if create_output_source_jar:
         helper.create_single_jar(
             ctx.actions,
@@ -379,15 +350,15 @@ def compile(
 def _should_use_header_compilation(ctx, toolchain):
     if not ctx.fragments.java.use_header_compilation():
         return False
-    if toolchain.forcibly_disable_header_compilation():
+    if toolchain._forcibly_disable_header_compilation:
         return False
-    if not toolchain.has_header_compiler():
+    if not toolchain._header_compiler:
         fail(
             "header compilation was requested but it is not supported by the " +
             "current Java toolchain '" + str(toolchain.label) +
             "'; see the java_toolchain.header_compiler attribute",
         )
-    if not toolchain.has_header_compiler_direct():
+    if not toolchain._header_compiler_direct:
         fail(
             "header compilation was requested but it is not supported by the " +
             "current Java toolchain '" + str(toolchain.label) +

@@ -34,7 +34,6 @@ import com.google.devtools.build.lib.analysis.config.transitions.NoTransition;
 import com.google.devtools.build.lib.analysis.config.transitions.TransitionFactory;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.events.EventHandler;
-import com.google.devtools.build.lib.packages.AspectsListBuilder.AspectDetails;
 import com.google.devtools.build.lib.packages.RuleClass.Builder.RuleClassNamePredicate;
 import com.google.devtools.build.lib.packages.Type.ConversionException;
 import com.google.devtools.build.lib.packages.Type.LabelClass;
@@ -45,6 +44,7 @@ import com.google.devtools.build.lib.util.FileType;
 import com.google.devtools.build.lib.util.FileTypeSet;
 import com.google.devtools.build.lib.util.StringUtil;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.errorprone.annotations.FormatMethod;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -260,7 +260,7 @@ public final class Attribute implements Comparable<Attribute> {
     private final ImmutableSet<PropertyFlag> propertyFlags;
     private final PredicateWithMessage<Object> allowedValues;
     private final RequiredProviders requiredProviders;
-    private final ImmutableList<AspectDetails<?>> aspects;
+    private final AspectsList aspects;
     private final int hashCode;
 
     private ImmutableAttributeFactory(
@@ -277,7 +277,7 @@ public final class Attribute implements Comparable<Attribute> {
         boolean valueSet,
         PredicateWithMessage<Object> allowedValues,
         RequiredProviders requiredProviders,
-        ImmutableList<AspectDetails<?>> aspects) {
+        AspectsList aspects) {
       this.type = type;
       this.doc = doc;
       this.transitionFactory = transitionFactory;
@@ -394,6 +394,10 @@ public final class Attribute implements Comparable<Attribute> {
     public int hashCode() {
       return hashCode;
     }
+
+    public TransitionFactory<AttributeTransitionData> getTransitionFactory() {
+      return transitionFactory;
+    }
   }
 
   /**
@@ -419,7 +423,7 @@ public final class Attribute implements Comparable<Attribute> {
     private PredicateWithMessage<Object> allowedValues = null;
     private RequiredProviders.Builder requiredProvidersBuilder =
         RequiredProviders.acceptAnyBuilder();
-    private AspectsListBuilder aspectsListBuilder = new AspectsListBuilder();
+    private AspectsList.Builder aspectsListBuilder = new AspectsList.Builder();
 
     /**
      * Creates an attribute builder with given name and type. This attribute is optional, uses
@@ -967,8 +971,14 @@ public final class Attribute implements Comparable<Attribute> {
       return this;
     }
 
-    public AspectsListBuilder getAspectsListBuilder() {
-      return aspectsListBuilder;
+    void addAspects(AspectsList aspectsList) throws EvalException {
+      aspectsListBuilder.addAspects(aspectsList);
+    }
+
+    @CanIgnoreReturnValue
+    public Builder<TYPE> aspect(StarlarkAspect aspect) throws EvalException {
+      aspectsListBuilder.addAspect(aspect);
+      return this;
     }
 
     /**
@@ -1072,7 +1082,7 @@ public final class Attribute implements Comparable<Attribute> {
           valueSet,
           allowedValues,
           requiredProvidersBuilder.build(),
-          aspectsListBuilder.getAspectsDetails());
+          aspectsListBuilder.build());
     }
 
     /**
@@ -1813,7 +1823,7 @@ public final class Attribute implements Comparable<Attribute> {
 
   private final RequiredProviders requiredProviders;
 
-  private final ImmutableList<AspectDetails<?>> aspects;
+  private final AspectsList aspects;
 
   private final int hashCode;
 
@@ -1842,7 +1852,7 @@ public final class Attribute implements Comparable<Attribute> {
       ValidityPredicate validityPredicate,
       PredicateWithMessage<Object> allowedValues,
       RequiredProviders requiredProviders,
-      ImmutableList<AspectDetails<?>> aspects) {
+      AspectsList aspects) {
     Preconditions.checkArgument(
         NoTransition.isInstance(transitionFactory)
             || type.getLabelClass() == LabelClass.DEPENDENCY
@@ -2104,37 +2114,24 @@ public final class Attribute implements Comparable<Attribute> {
   }
 
   public boolean hasAspects() {
-    return !aspects.isEmpty();
+    return aspects.hasAspects();
   }
 
   /** Returns the list of aspects required for dependencies through this attribute. */
   public ImmutableList<Aspect> getAspects(Rule rule) {
-    if (aspects.isEmpty()) {
-      return ImmutableList.of();
-    }
-    ImmutableList.Builder<Aspect> builder = null;
-    for (AspectDetails<?> aspect : aspects) {
-      Aspect a = aspect.getAspect(rule);
-      if (a != null) {
-        if (builder == null) {
-          builder = ImmutableList.builder();
-        }
-        builder.add(a);
-      }
-    }
-    return builder == null ? ImmutableList.of() : builder.build();
+    return aspects.getAspects(rule);
+  }
+
+  public AspectsList getAspectsList() {
+    return aspects;
   }
 
   public ImmutableList<AspectClass> getAspectClasses() {
-    ImmutableList.Builder<AspectClass> result = ImmutableList.builder();
-    for (AspectDetails<?> aspect : aspects) {
-      result.add(aspect.getAspectClass());
-    }
-    return result.build();
+    return aspects.getAspectClasses();
   }
 
-  public ImmutableList<AspectDetails<?>> getAspectsDetails() {
-    return aspects;
+  public void validateRulePropagatedAspectsParameters(RuleClass ruleClass) throws EvalException {
+    aspects.validateRulePropagatedAspectsParameters(ruleClass);
   }
 
   /**
@@ -2236,6 +2233,50 @@ public final class Attribute implements Comparable<Attribute> {
     return nativeAttrName;
   }
 
+  @FormatMethod
+  private static void failIf(boolean condition, String message, Object... args)
+      throws EvalException {
+    if (condition) {
+      throw Starlark.errorf(message, args);
+    }
+  }
+
+  /**
+   * Throws Eval exception if this attribute cannot override another one using Starlark rule
+   * extensions.
+   *
+   * <p>Starlark rule extension only allow to override aspects and default value.
+   */
+  public void failIfNotAValidOverride() throws EvalException {
+    failIf(
+        !allowedRuleClassesForLabels.equals(Attribute.ANY_RULE),
+        "attribute `%s`: can't override allowed rule classes",
+        name);
+    failIf(
+        !allowedRuleClassesForLabelsWarning.equals(Attribute.NO_RULE),
+        "attribute `%s`: can't override allowed rule classes",
+        name);
+    failIf(
+        !NoTransition.isInstance(transitionFactory),
+        "attribute `%s`: can't override configuration transition",
+        name);
+    failIf(
+        allowedFileTypesForLabels != FileTypeSet.NO_FILE,
+        "attribute `%s`: can't override allowed files",
+        name);
+    failIf(
+        validityPredicate != Attribute.ANY_EDGE,
+        "attribute `%s`: can't override allowed files",
+        name);
+    failIf(
+        !requiredProviders.acceptsAny(), "attribute `%s`: can't override required providers", name);
+    failIf(
+        !propertyFlags.equals(
+            ImmutableSet.of(PropertyFlag.STARLARK_DEFINED, PropertyFlag.STRICT_LABEL_CHECKING)),
+        "attribute `%s`: can't have additional flags",
+        name); // mandatory?*/
+  }
+
   @Override
   public String toString() {
     return "Attribute(" + name + ", " + type + ")";
@@ -2292,7 +2333,7 @@ public final class Attribute implements Comparable<Attribute> {
     builder.value = defaultValue;
     builder.valueSet = false;
     builder.allowedValues = allowedValues;
-    builder.aspectsListBuilder = new AspectsListBuilder(aspects);
+    builder.aspectsListBuilder = new AspectsList.Builder(aspects);
 
     return builder;
   }

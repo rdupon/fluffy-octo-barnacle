@@ -22,7 +22,6 @@ import com.google.devtools.build.lib.profiler.SilentCloseable;
 import com.google.devtools.build.skyframe.Differencer.Diff;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import javax.annotation.Nullable;
 
 /**
  * An in-memory {@link MemoizingEvaluator} that uses the eager invalidation strategy. This class is,
@@ -42,13 +41,13 @@ public final class InMemoryMemoizingEvaluator
 
   public InMemoryMemoizingEvaluator(
       Map<SkyFunctionName, SkyFunction> skyFunctions, Differencer differencer) {
-    this(skyFunctions, differencer, /*progressReceiver=*/ null);
+    this(skyFunctions, differencer, EvaluationProgressReceiver.NULL);
   }
 
   public InMemoryMemoizingEvaluator(
       Map<SkyFunctionName, SkyFunction> skyFunctions,
       Differencer differencer,
-      @Nullable EvaluationProgressReceiver progressReceiver) {
+      EvaluationProgressReceiver progressReceiver) {
     this(
         skyFunctions,
         differencer,
@@ -63,7 +62,7 @@ public final class InMemoryMemoizingEvaluator
   public InMemoryMemoizingEvaluator(
       Map<SkyFunctionName, SkyFunction> skyFunctions,
       Differencer differencer,
-      @Nullable EvaluationProgressReceiver progressReceiver,
+      EvaluationProgressReceiver progressReceiver,
       GraphInconsistencyReceiver graphInconsistencyReceiver,
       EventFilter eventFilter,
       EmittedEventState emittedEventState,
@@ -72,7 +71,7 @@ public final class InMemoryMemoizingEvaluator
     super(
         ImmutableMap.copyOf(skyFunctions),
         differencer,
-        new DirtyTrackingProgressReceiver(progressReceiver),
+        new DirtyAndInflightTrackingProgressReceiver(progressReceiver),
         eventFilter,
         emittedEventState,
         graphInconsistencyReceiver,
@@ -98,8 +97,10 @@ public final class InMemoryMemoizingEvaluator
     }
     setAndCheckEvaluateState(true, roots);
     try {
-      // Mark for removal any inflight nodes from the previous evaluation.
+      // Mark for removal inflight and rewound nodes from the previous evaluation. When the
+      // invalidator runs, it will delete the reverse transitive closure.
       valuesToDelete.addAll(progressReceiver.getAndClearInflightKeys());
+      valuesToDelete.addAll(progressReceiver.getAndClearRewindingKeys());
 
       // The RecordingDifferencer implementation is not quite working as it should be at this point.
       // It clears the internal data structures after getDiff is called and will not return

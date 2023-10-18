@@ -70,6 +70,7 @@ import com.google.devtools.build.lib.packages.NoSuchThingException;
 import com.google.devtools.build.lib.packages.OutputFile;
 import com.google.devtools.build.lib.packages.Package;
 import com.google.devtools.build.lib.packages.Rule;
+import com.google.devtools.build.lib.packages.RuleClass.ConfiguredTargetFactory.RuleErrorException;
 import com.google.devtools.build.lib.packages.StarlarkAspectClass;
 import com.google.devtools.build.lib.packages.StarlarkDefinedAspect;
 import com.google.devtools.build.lib.packages.Target;
@@ -126,19 +127,40 @@ final class AspectFunction implements SkyFunction {
   private final boolean storeTransitivePackages;
 
   /**
-   * Packages of prerequistes.
+   * Packages of prerequisites.
    *
    * <p>See {@link ConfiguredTargetFunction#prerequisitePackages} for more details.
    */
   private final PrerequisitePackageFunction prerequisitePackages;
 
+  /**
+   * Used to look up configured targets and configurations of the underlying target dependencies
+   * without adding dependency edges to them.
+   *
+   * <p>A regular {@code Skyframe} lookup of the target's dependencies while evaluating the aspect
+   * propagation logic adds unnecessary dependency edges between the aspect and its target's
+   * dependencies. Instead {@link BaseTargetPrerequisitesSupplier} function is used to directly look
+   * up the dependency values.
+   *
+   * <p>Regular {@code Skyframe} lookup is used to get the {@link ConfiguredTargetValue}s of the
+   * aspect's implicit dependencies and its underlying target to establish a dependency from the
+   * {@link AspectValue} to them. While aspect explicit attributes can only be of types: string,
+   * integer or boolean so no dependencies will be created from them.
+   *
+   * <p>This is safe from incrementality perspective because if a dependency is invalidated, the
+   * underlying target will be invalidated and transitively invalidates the {@link AspectValue}.
+   */
+  private final BaseTargetPrerequisitesSupplier baseTargetPrerequisitesSupplier;
+
   AspectFunction(
       BuildViewProvider buildViewProvider,
       boolean storeTransitivePackages,
-      PrerequisitePackageFunction prerequisitePackages) {
+      PrerequisitePackageFunction prerequisitePackages,
+      BaseTargetPrerequisitesSupplier baseTargetPrerequisitesSupplier) {
     this.buildViewProvider = buildViewProvider;
     this.storeTransitivePackages = storeTransitivePackages;
     this.prerequisitePackages = prerequisitePackages;
+    this.baseTargetPrerequisitesSupplier = baseTargetPrerequisitesSupplier;
   }
 
   static class State implements SkyKeyComputeState {
@@ -307,7 +329,8 @@ final class AspectFunction implements SkyFunction {
               buildViewProvider.getSkyframeBuildView().getStarlarkTransitionCache(),
               starlarkExecTransition.orElse(null),
               env,
-              env.getListener());
+              env.getListener(),
+              baseTargetPrerequisitesSupplier);
       if (!computeDependenciesState.transitiveRootCauses().isEmpty()) {
         NestedSet<Cause> causes = computeDependenciesState.transitiveRootCauses().build();
         throw new AspectFunctionException(
@@ -771,6 +794,8 @@ final class AspectFunction implements SkyFunction {
         return null;
       } catch (ActionConflictException e) {
         throw new AspectFunctionException(e);
+      } catch (RuleErrorException e) {
+        throw new AspectFunctionException(e);
       } catch (InvalidExecGroupException e) {
         throw new AspectFunctionException(e);
       } finally {
@@ -829,6 +854,10 @@ final class AspectFunction implements SkyFunction {
     }
 
     public AspectFunctionException(ActionConflictException cause) {
+      super(cause, Transience.PERSISTENT);
+    }
+
+    public AspectFunctionException(RuleErrorException cause) {
       super(cause, Transience.PERSISTENT);
     }
   }

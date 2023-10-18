@@ -558,7 +558,7 @@ genrule(
     name = "genrule_foo1",
     target_compatible_with = [":foo1"],
     outs = ["foo1.sh"],
-    cmd = "echo 'Should not be executed' &>2; exit 1",
+    cmd = "echo 'Should not be executed' >&2; exit 1",
 )
 
 sh_binary(
@@ -1433,9 +1433,9 @@ EOF
     --output=starlark --starlark:file=target_skipping/compatibility.cquery \
     &> "${TEST_log}"
 
-  expect_log '^@//target_skipping:pass_on_foo1 is compatible$'
-  expect_log '^@//target_skipping:fail_on_foo2 is incompatible$'
-  expect_log '^@//target_skipping:some_foo3_target is incompatible$'
+  expect_log '^@@\?//target_skipping:pass_on_foo1 is compatible$'
+  expect_log '^@@\?//target_skipping:fail_on_foo2 is incompatible$'
+  expect_log '^@@\?//target_skipping:some_foo3_target is incompatible$'
 
   bazel cquery \
     --host_platform=//target_skipping:foo3_platform \
@@ -1444,9 +1444,9 @@ EOF
     --output=starlark --starlark:file=target_skipping/compatibility.cquery \
     &> "${TEST_log}"
 
-  expect_log '^@//target_skipping:pass_on_foo1 is incompatible$'
-  expect_log '^@//target_skipping:fail_on_foo2 is incompatible$'
-  expect_log '^@//target_skipping:some_foo3_target is compatible$'
+  expect_log '^@@\?//target_skipping:pass_on_foo1 is incompatible$'
+  expect_log '^@@\?//target_skipping:fail_on_foo2 is incompatible$'
+  expect_log '^@@\?//target_skipping:some_foo3_target is compatible$'
 }
 
 # Run an aquery on a target that is compatible. This should pass.

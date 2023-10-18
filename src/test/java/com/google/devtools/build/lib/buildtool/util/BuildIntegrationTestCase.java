@@ -210,8 +210,8 @@ public abstract class BuildIntegrationTestCase {
           PrecomputedValue.injected(
               RepositoryDelegatorFunction.REPOSITORY_OVERRIDES, ImmutableMap.of()),
           PrecomputedValue.injected(
-              RepositoryDelegatorFunction.DEPENDENCY_FOR_UNCONDITIONAL_FETCHING,
-              RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY));
+              RepositoryDelegatorFunction.FORCE_FETCH,
+              RepositoryDelegatorFunction.FORCE_FETCH_DISABLED));
 
   protected EventCollectionApparatus createEvents() {
     return new EventCollectionApparatus();
@@ -604,7 +604,6 @@ public abstract class BuildIntegrationTestCase {
             .addBlazeModule(new OutputFilteringModule())
             .addBlazeModule(connectivityModule)
             .addBlazeModule(new SkymeldModule())
-            .addBlazeModule(getMockBazelRepositoryModule())
             .addBlazeModule(new CredentialModule());
     getSpawnModules().forEach(builder::addBlazeModule);
     builder
@@ -617,7 +616,10 @@ public abstract class BuildIntegrationTestCase {
       builder
           .addBlazeModule(new NoSpawnCacheModule())
           .addBlazeModule(new WorkerModule())
-          .addBlazeModule(new BazelRepositoryModule());
+          .addBlazeModule(
+              new BazelRepositoryModule(AnalysisMock.get().getBuiltinModules(directories)));
+    } else {
+      builder.addBlazeModule(getMockBazelRepositoryModule());
     }
     return builder;
   }

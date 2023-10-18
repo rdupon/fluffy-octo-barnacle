@@ -20,6 +20,7 @@ import static com.google.common.truth.Truth8.assertThat;
 import static com.google.devtools.build.lib.actions.util.ActionsTestUtil.prettyArtifactNames;
 import static com.google.devtools.build.lib.rules.java.JavaCompileActionTestHelper.getProcessorNames;
 import static com.google.devtools.build.lib.rules.java.JavaCompileActionTestHelper.getProcessorPath;
+import static com.google.devtools.build.lib.skyframe.serialization.testutils.Dumper.dumpStructure;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.joining;
 
@@ -1541,7 +1542,10 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
     StructImpl declaredProvider = (StructImpl) myRuleTarget.get(myProviderKey);
     // attempting to wrap will error out if not a JavaInfo
     Object javaProvider = JavaInfo.PROVIDER.wrap(declaredProvider.getValue("p", Info.class));
-    assertThat(javaLibraryTarget.get(JavaInfo.PROVIDER)).isEqualTo(javaProvider);
+    // Compares providers structurally rather than by reference equality. References will not match
+    // after serialization.
+    assertThat(dumpStructure(javaLibraryTarget.get(JavaInfo.PROVIDER)))
+        .isEqualTo(dumpStructure(javaProvider));
   }
 
   @Test
@@ -1568,7 +1572,9 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
 
     JavaInfo jlJavaInfo = javaLibraryTarget.get(JavaInfo.PROVIDER);
 
-    assertThat(jlJavaInfo).isEqualTo(javaProvider);
+    // Compares providers structurally rather than by reference equality. References will not match
+    // after serialization.
+    assertThat(dumpStructure(jlJavaInfo)).isEqualTo(dumpStructure(javaProvider));
 
     JavaInfo jlTopJavaInfo = topJavaLibraryTarget.get(JavaInfo.PROVIDER);
 
@@ -2936,7 +2942,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
         "    ctx,",
         "    source_files = ctx.files.srcs,",
         "    output = output_jar,",
-        "    java_toolchain = ctx.attr._java_toolchain,",
+        "    java_toolchain = ctx.attr._java_toolchain[platform_common.ToolchainInfo],",
         "  )",
         "  return []",
         "jrule = rule(",
@@ -2953,7 +2959,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
 
     reporter.removeHandler(failFastHandler);
     getConfiguredTarget("//a:r");
-    assertContainsEvent("got value of type 'Target', want 'JavaToolchainInfo'");
+    assertContainsEvent("got value of type 'ToolchainInfo', want 'JavaToolchainInfo'");
   }
 
   @Test
@@ -3409,7 +3415,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
         "    ctx,",
         "    output = ctx.actions.declare_file('output.jar'),",
         "    java_toolchain = java_toolchain,",
-        "    resource_jars = [java_toolchain.timezone_data()],",
+        "    resource_jars = ['foo.jar'],",
         "  )",
         "  return []",
         "java_custom_library = rule(",
@@ -3429,7 +3435,7 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
 
     getConfiguredTarget("//foo:custom");
 
-    assertContainsEvent("file '//foo:custom_rule.bzl' cannot use private API");
+    assertContainsEvent("got unexpected keyword argument: resource_jars");
   }
 
   @Test
@@ -3568,10 +3574,6 @@ public class JavaStarlarkApiTest extends BuildViewTestCase {
     "{module: java_config, api: use_header_compilation}",
     "{module: java_config, api: generate_java_deps}",
     "{module: java_config, api: reduce_java_classpath}",
-    "{module: java_toolchain, api: forcibly_disable_header_compilation}",
-    "{module: java_toolchain, api: has_header_compiler}",
-    "{module: java_toolchain, api: has_header_compiler_direct}",
-    "{module: java_toolchain, api: package_configuration}",
   })
   public void testNoArgsPrivateAPIsAreIndeedPrivate(String module, String api) throws Exception {
     setBuildLanguageOptions("--experimental_builtins_injection_override=+java_import");

@@ -17,6 +17,7 @@ Definition of java_library rule.
 """
 
 load(":common/cc/cc_info.bzl", "CcInfo")
+load(":common/java/android_lint.bzl", "android_lint_subrule")
 load(":common/java/basic_java_library.bzl", "BASIC_JAVA_LIBRARY_IMPLICIT_ATTRS", "basic_java_library", "construct_defaultinfo")
 load(":common/java/java_info.bzl", "JavaInfo", "JavaPluginInfo")
 load(":common/java/java_semantics.bzl", "semantics")
@@ -171,7 +172,6 @@ def _make_java_library_rule(extra_attrs = {}):
         _proxy,
         attrs = merge_attrs(
             JAVA_LIBRARY_ATTRS,
-            {"_use_auto_exec_groups": attr.bool(default = True)},
             extra_attrs,
         ),
         provides = [JavaInfo],
@@ -181,6 +181,7 @@ def _make_java_library_rule(extra_attrs = {}):
         },
         fragments = ["java", "cpp"],
         toolchains = [semantics.JAVA_TOOLCHAIN],
+        subrules = [android_lint_subrule],
     )
 
 java_library = _make_java_library_rule()

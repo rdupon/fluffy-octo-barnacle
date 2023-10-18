@@ -106,6 +106,7 @@ import com.google.devtools.build.lib.analysis.starlark.StarlarkTransition;
 import com.google.devtools.build.lib.analysis.starlark.StarlarkTransition.TransitionException;
 import com.google.devtools.build.lib.analysis.test.BaselineCoverageAction;
 import com.google.devtools.build.lib.analysis.test.InstrumentedFilesInfo;
+import com.google.devtools.build.lib.bazel.bzlmod.FakeRegistry;
 import com.google.devtools.build.lib.bazel.bzlmod.ModuleFileFunction;
 import com.google.devtools.build.lib.buildtool.BuildRequestOptions;
 import com.google.devtools.build.lib.clock.BlazeClock;
@@ -205,6 +206,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 import net.starlark.java.eval.StarlarkSemantics;
@@ -224,6 +226,9 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
   protected TimestampGranularityMonitor tsgm;
   protected BlazeDirectories directories;
   protected ActionKeyContext actionKeyContext;
+
+  protected Path moduleRoot;
+  protected FakeRegistry registry;
 
   // Note that these configurations are virtual (they use only VFS)
   protected BuildConfigurationValue targetConfig; // "target" or "build" config
@@ -272,6 +277,8 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
             rootDirectory,
             /* defaultSystemJavabase= */ null,
             analysisMock.getProductName());
+    moduleRoot = scratch.dir("modules");
+    registry = FakeRegistry.DEFAULT_FACTORY.newFakeRegistry(moduleRoot.getPathString());
 
     actionKeyContext = new ActionKeyContext();
     mockToolsConfig = new MockToolsConfig(rootDirectory, false);
@@ -286,26 +293,14 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
     getOutputPath().createDirectoryAndParents();
     ImmutableList<PrecomputedValue.Injected> extraPrecomputedValues =
         ImmutableList.<PrecomputedValue.Injected>builder()
-            .add(
-                PrecomputedValue.injected(
-                    PrecomputedValue.STARLARK_SEMANTICS, StarlarkSemantics.DEFAULT))
-            .add(PrecomputedValue.injected(PrecomputedValue.REPO_ENV, ImmutableMap.of()))
-            .add(PrecomputedValue.injected(ModuleFileFunction.MODULE_OVERRIDES, ImmutableMap.of()))
-            .add(
-                PrecomputedValue.injected(
-                    RepositoryDelegatorFunction.REPOSITORY_OVERRIDES, ImmutableMap.of()))
-            .add(
-                PrecomputedValue.injected(
-                    RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE,
-                    Optional.empty()))
-            .add(
-                PrecomputedValue.injected(
-                    RepositoryDelegatorFunction.DEPENDENCY_FOR_UNCONDITIONAL_FETCHING,
-                    RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY))
+            .addAll(analysisMock.getPrecomputedValues())
             .add(
                 PrecomputedValue.injected(
                     BuildInfoCollectionFunction.BUILD_INFO_FACTORIES,
                     ruleClassProvider.getBuildInfoFactoriesAsMap()))
+            .add(
+                PrecomputedValue.injected(
+                    ModuleFileFunction.REGISTRIES, ImmutableList.of(registry.getUrl())))
             .addAll(extraPrecomputedValues())
             .build();
     PackageFactory.BuilderForTesting pkgFactoryBuilder =
@@ -556,6 +551,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
     if (!analysisMock.isThisBazel()) {
       parser.parse("--experimental_google_legacy_api"); // For starlark java_binary;
     }
+    parser.parse("--enable_bzlmod");
     parser.parse(options);
     return parser.getOptions(BuildLanguageOptions.class);
   }
@@ -2475,8 +2471,31 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
     return getBinArtifact(getImplicitOutputPath(target, outputFunction), target);
   }
 
+  static final Pattern WORKSPACE_NAME_PATTERN =
+      Pattern.compile(
+          "workspace\\(\\s*name\\s*=\\s*(?:'|\")(\\w+)(?:'|\")\\s*\\)", Pattern.MULTILINE);
+
+  private String findWorkspaceName() {
+    // HACK -- we have to somehow get the workspace name here. But running skyframe itself is too
+    // demanding (and who knows what might go wrong if we run skyframe mid-setup); so we fall back
+    // to just reading out the WORKSPACE file ourselves and doing a simple parse. This function
+    // crudely reproduces the logic of WorkspaceNameFunction.
+    if (buildLanguageOptions.enableBzlmod) {
+      return ruleClassProvider.getRunfilesPrefix();
+    }
+    try {
+      Matcher matcher = WORKSPACE_NAME_PATTERN.matcher(scratch.readFile("WORKSPACE"));
+      if (matcher.find()) {
+        return matcher.group(1);
+      }
+      return "__main__";
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   public Path getExecRoot() {
-    return directories.getExecRoot(ruleClassProvider.getRunfilesPrefix());
+    return directories.getExecRoot(findWorkspaceName());
   }
 
   /** Returns true iff commandLine contains the option --flagName followed by arg. */

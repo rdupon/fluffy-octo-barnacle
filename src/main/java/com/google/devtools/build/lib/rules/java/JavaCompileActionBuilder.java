@@ -35,6 +35,7 @@ import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
 import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadCompatible;
+import com.google.devtools.build.lib.packages.RuleClass.ConfiguredTargetFactory.RuleErrorException;
 import com.google.devtools.build.lib.rules.java.JavaCompileAction.ProgressMessage;
 import com.google.devtools.build.lib.rules.java.JavaConfiguration.JavaClasspathMode;
 import com.google.devtools.build.lib.rules.java.JavaPluginInfo.JavaPluginData;
@@ -171,7 +172,7 @@ public final class JavaCompileActionBuilder {
     this.execGroup = execGroup;
   }
 
-  public JavaCompileAction build() {
+  public JavaCompileAction build() throws RuleErrorException {
     // TODO(bazel-team): all the params should be calculated before getting here, and the various
     // aggregation code below should go away.
 
@@ -284,7 +285,8 @@ public final class JavaCompileActionBuilder {
     return result.build();
   }
 
-  private CustomCommandLine buildParamFileContents(ImmutableList<String> javacOpts) {
+  private CustomCommandLine buildParamFileContents(ImmutableList<String> javacOpts)
+      throws RuleErrorException {
 
     CustomCommandLine.Builder result = CustomCommandLine.builder();
 

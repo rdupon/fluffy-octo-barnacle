@@ -30,9 +30,9 @@ def extract_url(attributes):
         The url extracted from the given attributes.
     """
     if "urls" in attributes:
-        return attributes["urls"][0].removeprefix("--")
+        return attributes["urls"][0]
     elif "url" in attributes:
-        return attributes["url"].removeprefix("--")
+        return attributes["url"]
     else:
         fail("Could not find url in attributes %s" % attributes)
 
@@ -48,11 +48,6 @@ def parse_http_artifacts(ctx, lockfile_path, required_repos):
     Returns:
         A list of http artifacts in the form of
         [{"integrity": <integrity value>, "url": <url>}, {"sha256": <sha256 value>, "url": <url>}, ...]
-
-    All lockfile string values in version 2, but not version 3, are prefixed with `--`, hence the
-    `.removeprefix("--")` is needed to remove the prefix if it exists. This is a heuristic as
-    version 3 strings could start with `--`, but that is unlikely.
-    TODO: Remove this hack after the release of Bazel 6.4.0.
     """
     lockfile = json.decode(ctx.read(lockfile_path))
     http_artifacts = []
@@ -61,42 +56,66 @@ def parse_http_artifacts(ctx, lockfile_path, required_repos):
         if "repoSpec" in module and module["repoSpec"]["ruleClassName"] == "http_archive":
             repo_spec = module["repoSpec"]
             attributes = repo_spec["attributes"]
-            repo_name = attributes["name"].removeprefix("--")
+            repo_name = attributes["name"]
 
             if repo_name not in required_repos:
                 continue
             found_repos.append(repo_name)
 
             http_artifacts.append({
-                "integrity": attributes["integrity"].removeprefix("--"),
+                "integrity": attributes["integrity"],
                 "url": extract_url(attributes),
             })
             if "remote_patches" in attributes:
                 for patch, integrity in attributes["remote_patches"].items():
                     http_artifacts.append({
-                        "integrity": integrity.removeprefix("--"),
-                        "url": patch.removeprefix("--"),
+                        "integrity": integrity,
+                        "url": patch,
                     })
 
-    for _, extension in lockfile["moduleExtensions"].items():
-        # TODO(pcloudy): update this when lockfile format changes (https://github.com/bazelbuild/bazel/issues/19154)
-        for _, repo_spec in extension["generatedRepoSpecs"].items():
-            rule_class = repo_spec["ruleClassName"]
-            if rule_class == "http_archive" or rule_class == "http_file" or rule_class == "http_jar":
-                attributes = repo_spec["attributes"]
-                repo_name = attributes["name"].removeprefix("--")
+    for _, extension_entry in lockfile["moduleExtensions"].items():
+        extensions = []
+        for _, extension_per_platform in extension_entry.items():
+            extensions.append(extension_per_platform)
+        for extension in extensions:
+            for _, repo_spec in extension["generatedRepoSpecs"].items():
+                rule_class = repo_spec["ruleClassName"]
+                if rule_class == "http_archive" or rule_class == "http_file" or rule_class == "http_jar":
+                    attributes = repo_spec["attributes"]
+                    repo_name = attributes["name"]
 
-                if repo_name not in required_repos:
-                    continue
-                found_repos.append(repo_name)
+                    if repo_name not in required_repos:
+                        continue
+                    found_repos.append(repo_name)
 
-                http_artifacts.append({
-                    "sha256": attributes["sha256"].removeprefix("--"),
-                    "url": extract_url(attributes),
-                })
+                    http_artifacts.append({
+                        "sha256": attributes["sha256"],
+                        "url": extract_url(attributes),
+                    })
 
     missing_repos = [repo for repo in required_repos if repo not in found_repos]
     if missing_repos:
         fail("Could not find all required repos, missing: %s" % missing_repos)
 
     return http_artifacts
+
+def parse_bazel_module_repos(ctx, lockfile_path):
+    """Parse repo names of http_archive backed Bazel modules from the given lockfile.
+
+    Args:
+        ctx: the repository / module extension ctx object.
+        lockfile_path: The path of the lockfile to extract the repo names from.
+
+    Returns:
+        A list of canonical repository names
+    """
+
+    lockfile = json.decode(ctx.read(lockfile_path))
+    repos = []
+    for _, module in lockfile["moduleDepGraph"].items():
+        if "repoSpec" in module and module["repoSpec"]["ruleClassName"] == "http_archive":
+            repo_spec = module["repoSpec"]
+            attributes = repo_spec["attributes"]
+            repo_name = attributes["name"]
+            repos.append(repo_name)
+    return repos

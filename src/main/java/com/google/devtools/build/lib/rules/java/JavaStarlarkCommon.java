@@ -19,10 +19,12 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Ascii;
 import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.analysis.ConfiguredTarget;
+import com.google.devtools.build.lib.analysis.Expander;
 import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.config.CoreOptionConverters.StrictDepsMode;
 import com.google.devtools.build.lib.analysis.configuredtargets.AbstractConfiguredTarget;
@@ -49,6 +51,7 @@ import com.google.devtools.build.lib.rules.cpp.CppFileTypes;
 import com.google.devtools.build.lib.rules.cpp.LibraryToLink;
 import com.google.devtools.build.lib.starlarkbuildapi.core.ProviderApi;
 import com.google.devtools.build.lib.starlarkbuildapi.java.JavaCommonApi;
+import com.google.devtools.build.lib.util.OS;
 import net.starlark.java.eval.EvalException;
 import net.starlark.java.eval.Sequence;
 import net.starlark.java.eval.Starlark;
@@ -61,8 +64,6 @@ public class JavaStarlarkCommon
     implements JavaCommonApi<
         Artifact,
         JavaInfo,
-        JavaToolchainProvider,
-        BootClassPathInfo.Provider,
         ConstraintValueInfo,
         StarlarkRuleContext,
         StarlarkActionFactory> {
@@ -119,7 +120,7 @@ public class JavaStarlarkCommon
   @Override
   public void createHeaderCompilationAction(
       StarlarkRuleContext ctx,
-      JavaToolchainProvider toolchain,
+      Info toolchain,
       Artifact headerJar,
       Artifact headerDepsProto,
       Info pluginInfo,
@@ -127,7 +128,7 @@ public class JavaStarlarkCommon
       Sequence<?> sourceJars,
       Depset compileTimeClasspath,
       Depset directJars,
-      Object bootClassPath,
+      Object bootClassPathUnchecked,
       Depset compileTimeJavaDeps,
       Depset javacOpts,
       String strictDepsMode,
@@ -149,9 +150,12 @@ public class JavaStarlarkCommon
                 injectingRuleKind == Starlark.NONE ? null : (String) injectingRuleKind)
             .addPlugin(JavaPluginInfo.PROVIDER.wrap(pluginInfo))
             .addCompileTimeDependencyArtifacts(compileTimeJavaDeps.getSet(Artifact.class));
-    if (bootClassPath instanceof BootClassPathInfo
-        && !((BootClassPathInfo) bootClassPath).isEmpty()) {
-      attributesBuilder.setBootClassPath((BootClassPathInfo) bootClassPath);
+    if (bootClassPathUnchecked instanceof Info) {
+      BootClassPathInfo bootClassPathInfo =
+          BootClassPathInfo.PROVIDER.wrap((Info) bootClassPathUnchecked);
+      if (!bootClassPathInfo.isEmpty()) {
+        attributesBuilder.setBootClassPath(bootClassPathInfo);
+      }
     }
     JavaCompilationHelper compilationHelper =
         new JavaCompilationHelper(
@@ -159,7 +163,7 @@ public class JavaStarlarkCommon
             javaSemantics,
             JavaHelper.tokenizeJavaOptions(Depset.cast(javacOpts, String.class, "javac_opts")),
             attributesBuilder,
-            toolchain,
+            JavaToolchainProvider.PROVIDER.wrap(toolchain),
             Sequence.cast(additionalInputs, Artifact.class, "additional_inputs")
                 .getImmutableList());
     compilationHelper.enableDirectClasspath(enableDirectClasspath);
@@ -169,13 +173,13 @@ public class JavaStarlarkCommon
   @Override
   public void createCompilationAction(
       StarlarkRuleContext ctx,
-      JavaToolchainProvider javaToolchain,
+      Info javaToolchain,
       Artifact output,
       Artifact manifestProto,
       Info pluginInfo,
       Depset compileTimeClasspath,
       Depset directJars,
-      Object bootClassPath,
+      Object bootClassPathUnchecked,
       Depset compileTimeJavaDeps,
       Depset javacOpts,
       String strictDepsMode,
@@ -223,9 +227,12 @@ public class JavaStarlarkCommon
             .addPlugin(JavaPluginInfo.PROVIDER.wrap(pluginInfo))
             .addAdditionalOutputs(
                 Sequence.cast(additionalOutputs, Artifact.class, "additional_outputs"));
-    if (bootClassPath instanceof BootClassPathInfo
-        && !((BootClassPathInfo) bootClassPath).isEmpty()) {
-      attributesBuilder.setBootClassPath((BootClassPathInfo) bootClassPath);
+    if (bootClassPathUnchecked instanceof Info) {
+      BootClassPathInfo bootClassPathInfo =
+          BootClassPathInfo.PROVIDER.wrap((Info) bootClassPathUnchecked);
+      if (!bootClassPathInfo.isEmpty()) {
+        attributesBuilder.setBootClassPath(bootClassPathInfo);
+      }
     }
     for (Artifact resource : Sequence.cast(resources, Artifact.class, "resources")) {
       attributesBuilder.addResource(
@@ -240,7 +247,7 @@ public class JavaStarlarkCommon
             javaSemantics,
             JavaHelper.tokenizeJavaOptions(Depset.cast(javacOpts, String.class, "javac_opts")),
             attributesBuilder,
-            javaToolchain,
+            JavaToolchainProvider.PROVIDER.wrap(javaToolchain),
             Sequence.cast(additionalInputs, Artifact.class, "additional_inputs")
                 .getImmutableList());
     compilationHelper.enableJspecify(enableJSpecify);
@@ -251,8 +258,10 @@ public class JavaStarlarkCommon
   @Override
   // TODO(b/78512644): migrate callers to passing explicit javacopts or using custom toolchains, and
   // delete
-  public StarlarkValue getDefaultJavacOpts(JavaToolchainProvider javaToolchain, boolean asDepset)
-      throws EvalException {
+  public StarlarkValue getDefaultJavacOpts(Info javaToolchainUnchecked, boolean asDepset)
+      throws EvalException, RuleErrorException {
+    JavaToolchainProvider javaToolchain =
+        JavaToolchainProvider.PROVIDER.wrap(javaToolchainUnchecked);
     // We don't have a rule context if the default_javac_opts.java_toolchain parameter is set
     if (asDepset) {
       return Depset.of(String.class, javaToolchain.getJavacOptions(/* ruleContext= */ null));
@@ -263,18 +272,21 @@ public class JavaStarlarkCommon
   }
 
   @Override
-  public Provider getJavaToolchainProvider() {
-    return JavaToolchainProvider.PROVIDER;
+  public ProviderApi getJavaToolchainProvider() {
+    // method exists solely for documentation
+    throw new UnsupportedOperationException();
   }
 
   @Override
   public Provider getJavaRuntimeProvider() {
-    return JavaRuntimeInfo.PROVIDER;
+    // method exists purely for documentation
+    throw new UnsupportedOperationException();
   }
 
   @Override
   public ProviderApi getBootClassPathInfo() {
-    return BootClassPathInfo.PROVIDER;
+    // method exists solely for documentation
+    throw new UnsupportedOperationException();
   }
 
   @Override
@@ -418,6 +430,28 @@ public class JavaStarlarkCommon
     return thread
         .getSemantics()
         .getBool(BuildLanguageOptions.INCOMPATIBLE_DISABLE_NON_EXECUTABLE_JAVA_BINARY);
+  }
+
+  @Override
+  public String getCurrentOsName() {
+    return OS.getCurrent().getCanonicalName();
+  }
+
+  @Override
+  public Sequence<?> expandJavaOpts(
+      StarlarkRuleContext ctx, String attr, boolean tokenize, boolean execPaths)
+      throws InterruptedException {
+    Expander expander;
+    if (execPaths) {
+      expander = ctx.getRuleContext().getExpander().withExecLocations(ImmutableMap.of());
+    } else {
+      expander = ctx.getRuleContext().getExpander().withDataLocations();
+    }
+    if (tokenize) {
+      return StarlarkList.immutableCopyOf(expander.tokenized(attr));
+    } else {
+      return StarlarkList.immutableCopyOf(expander.list(attr));
+    }
   }
 
   static boolean isInstanceOfProvider(Object obj, Provider provider) {

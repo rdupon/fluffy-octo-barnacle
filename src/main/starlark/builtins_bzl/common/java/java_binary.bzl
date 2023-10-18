@@ -60,7 +60,6 @@ def basic_java_binary(
         coverage_config,
         launcher_info,
         executable,
-        feature_config,
         strip_as_default,
         extension_registry_provider = None,
         is_test_rule_class = False):
@@ -76,7 +75,6 @@ def basic_java_binary(
         coverage_config: (Struct|None) If coverage is enabled, a struct with fields (runner, manifest, env, support_files), None otherwise
         launcher_info: (Struct) Structure with fields (launcher, unstripped_launcher, runfiles, runtime_jars, jvm_flags, classpath_resources)
         executable: (File) The executable output of the rule
-        feature_config: (FeatureConfiguration) The result of cc_common.configure_features()
         strip_as_default: (bool) Whether this target outputs a stripped launcher and deploy jar
         extension_registry_provider: (GeneratedExtensionRegistryProvider) internal param, do not use
         is_test_rule_class: (bool) Whether this rule is a test rule
@@ -111,7 +109,7 @@ def basic_java_binary(
         classpath_resources.extend(ctx.files.classpath_resources)
 
     toolchain = semantics.find_java_toolchain(ctx)
-    timezone_data = [toolchain.timezone_data()] if toolchain.timezone_data() else []
+    timezone_data = [toolchain._timezone_data] if toolchain._timezone_data else []
     target, common_info = basic_java_library(
         ctx,
         srcs = ctx.files.srcs,
@@ -385,13 +383,13 @@ def _create_one_version_check(ctx, inputs, is_test_rule_class):
     one_version_level = ctx.fragments.java.one_version_enforcement_level
     if one_version_level == "OFF":
         return None
-    tool = helper.check_and_get_one_version_attribute(ctx, "one_version_tool")
+    tool = helper.check_and_get_one_version_attribute(ctx, "_one_version_tool")
 
     if is_test_rule_class:
         toolchain = semantics.find_java_toolchain(ctx)
-        allowlist = toolchain.one_version_allowlist_for_tests()
+        allowlist = toolchain._one_version_allowlist_for_tests
     else:
-        allowlist = helper.check_and_get_one_version_attribute(ctx, "one_version_allowlist")
+        allowlist = helper.check_and_get_one_version_attribute(ctx, "_one_version_allowlist")
 
     if not tool or not allowlist:  # On Mac oneversion tool is not available
         return None
@@ -542,7 +540,6 @@ BASIC_JAVA_BINARY_ATTRIBUTES = merge_attrs(
             default = semantics.JAVA_STUB_TEMPLATE_LABEL,
             allow_single_file = True,
         ),
-        "_cc_toolchain": attr.label(default = "@" + cc_semantics.get_repo() + "//tools/cpp:current_cc_toolchain"),
         "_java_toolchain_type": attr.label(default = semantics.JAVA_TOOLCHAIN_TYPE),
     } | ({} if _builtins.internal.java_common_internal_do_not_use.incompatible_disable_non_executable_java_binary() else {"create_executable": attr.bool(default = True)}),
 )

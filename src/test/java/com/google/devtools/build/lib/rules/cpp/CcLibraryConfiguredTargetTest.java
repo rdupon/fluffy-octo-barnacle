@@ -1739,7 +1739,7 @@ public class CcLibraryConfiguredTargetTest extends BuildViewTestCase {
         "apply_custom_transition = rule(",
         "    implementation = _apply_custom_transition_impl,",
         "    attrs = {",
-        "        '_whitelist_function_transition': attr.label(",
+        "        '_allowlist_function_transition': attr.label(",
         "            default = '//tools/allowlists/function_transition_allowlist',",
         "        ),",
         "        'deps': attr.label_list(cfg = custom_transition),",
@@ -2001,6 +2001,63 @@ public class CcLibraryConfiguredTargetTest extends BuildViewTestCase {
   }
 
   @Test
+  public void testImplementationDepsDebugContextIsPropagated() throws Exception {
+    useConfiguration(
+        "--experimental_cc_implementation_deps",
+        "--fission=yes",
+        "--features=per_object_debug_info");
+    scratch.file(
+        "foo/BUILD",
+        "cc_binary(",
+        "    name = 'bin',",
+        "    srcs = ['bin.cc'],",
+        "    deps = ['lib'],",
+        ")",
+        "cc_library(",
+        "    name = 'lib',",
+        "    srcs = ['lib.cc'],",
+        "    deps = ['public_dep'],",
+        ")",
+        "cc_library(",
+        "    name = 'public_dep',",
+        "    srcs = ['public_dep.cc'],",
+        "    hdrs = ['public_dep.h'],",
+        "    implementation_deps = ['implementation_dep'],",
+        "    deps = ['interface_dep'],",
+        ")",
+        "cc_library(",
+        "    name = 'interface_dep',",
+        "    srcs = ['interface_dep.cc'],",
+        "    hdrs = ['interface_dep.h'],",
+        ")",
+        "cc_library(",
+        "    name = 'implementation_dep',",
+        "    srcs = ['implementation_dep.cc'],",
+        "    hdrs = ['implementation_dep.h'],",
+        ")");
+
+    ConfiguredTarget lib = getConfiguredTarget("//foo:lib");
+    assertThat(
+            lib
+                .get(CcInfo.PROVIDER)
+                .getCcDebugInfoContext()
+                .getTransitiveDwoFiles()
+                .toList()
+                .stream()
+                .map(Artifact::getFilename))
+        .contains("public_dep.dwo");
+    assertThat(
+            lib
+                .get(CcInfo.PROVIDER)
+                .getCcDebugInfoContext()
+                .getTransitiveDwoFiles()
+                .toList()
+                .stream()
+                .map(Artifact::getFilename))
+        .contains("implementation_dep.dwo");
+  }
+
+  @Test
   public void testImplementationDepsRunfilesArePropagated() throws Exception {
     useConfiguration("--experimental_cc_implementation_deps");
     scratch.file(
@@ -2196,7 +2253,7 @@ public class CcLibraryConfiguredTargetTest extends BuildViewTestCase {
             "-Xlinker",
             "-rpath",
             "-Xlinker",
-            "$ORIGIN/main.runfiles/" + TestConstants.WORKSPACE_NAME + "/_solib_k8/")
+            "$ORIGIN/main.runfiles/" + ruleClassProvider.getRunfilesPrefix() + "/_solib_k8/")
         .inOrder();
     assertThat(linkArgv)
         .contains("-L" + TestConstants.PRODUCT_NAME + "-out/k8-fastbuild/bin/_solib_k8");
@@ -2267,7 +2324,7 @@ public class CcLibraryConfiguredTargetTest extends BuildViewTestCase {
             "-Xlinker",
             "-rpath",
             "-Xlinker",
-            "$ORIGIN/main.runfiles/" + TestConstants.WORKSPACE_NAME + "/_solib_k8/")
+            "$ORIGIN/main.runfiles/" + ruleClassProvider.getRunfilesPrefix() + "/_solib_k8/")
         .inOrder();
     assertThat(Joiner.on(" ").join(linkArgv))
         .contains("-Xlinker -rpath -Xlinker $ORIGIN/../../../k8-fastbuild-ST-");

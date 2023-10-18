@@ -245,7 +245,9 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
                     SkyFunctions.IGNORED_PACKAGE_PREFIXES,
                     new IgnoredPackagePrefixesFunction(
                         /* ignoredPackagePrefixesFile= */ PathFragment.EMPTY_FRAGMENT))
-                .put(SkyFunctions.REPOSITORY_MAPPING, new RepositoryMappingFunction())
+                .put(
+                    SkyFunctions.REPOSITORY_MAPPING,
+                    new RepositoryMappingFunction(ruleClassProvider))
                 .put(
                     SkyFunctions.MODULE_FILE,
                     new ModuleFileFunction(registryFactory, rootPath, ImmutableMap.of()))
@@ -264,8 +266,8 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
     overrideDirectory = scratch.dir("/foo");
     scratch.file("/foo/WORKSPACE");
     RepositoryDelegatorFunction.REPOSITORY_OVERRIDES.set(differencer, ImmutableMap.of());
-    RepositoryDelegatorFunction.DEPENDENCY_FOR_UNCONDITIONAL_FETCHING.set(
-        differencer, RepositoryDelegatorFunction.DONT_FETCH_UNCONDITIONALLY);
+    RepositoryDelegatorFunction.FORCE_FETCH.set(
+        differencer, RepositoryDelegatorFunction.FORCE_FETCH_DISABLED);
     PrecomputedValue.PATH_PACKAGE_LOCATOR.set(differencer, pkgLocator.get());
     PrecomputedValue.STARLARK_SEMANTICS.set(
         differencer,
