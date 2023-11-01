@@ -3,3 +3,19 @@ name: Close milestoned issues when cherry-picked PR is merged
 on:
   pull_request_target:
     types: [closed]
+
+jobs:
+  close-milestoned-issues:
+    if: startsWith(github.event.pull_request.base.ref, 'release-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6b3083af2869dc3314a0257a42f4af696cc79ba3
+        with:
+          egress-policy: audit
+      - name: Logging github event
+        run: echo '${{ toJSON(github.event) }}' | jq
+      - name: Run cherrypicker on closed PR
+        uses: iancha1992/continuous-integration/actions/milestoned_issue_closer@ci-closeissues
+        with:
+          pr-number: ${{ github.event.number }}
