@@ -13,8 +13,8 @@ jobs:
         uses: step-security/harden-runner@6b3083af2869dc3314a0257a42f4af696cc79ba3
         with:
           egress-policy: audit
-      - name: Logging github event
-        run: echo '${{ toJSON(github.event) }}' | jq
+      # - name: Logging github event
+      #   run: echo '${{ toJSON(github.event) }}' | jq
       - name: Run cherrypicker on closed PR
         uses: iancha1992/continuous-integration/actions/milestoned_issue_closer@ci-closeissues
         with:
