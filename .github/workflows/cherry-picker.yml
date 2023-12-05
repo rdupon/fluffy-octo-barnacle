@@ -11,7 +11,7 @@ env:
 
 jobs:
   cherry-picker-on-closed:
-    # if: github.event.action == 'closed' && github.event.sender.login == 'copybara-service[bot]' 
+    # if: github.event.action == 'closed' && github.event.sender.login == 'copybara-service[bot]'
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
@@ -21,14 +21,14 @@ jobs:
           egress-policy: audit
       - if: github.event.pull_request
         name: Run cherrypicker on closed PR
-        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
+        uses: iancha1992/continuous-integration/actions/cherry_picker@cherry-picker-vulnerability-fix
         with:
           triggered-on: closed
           pr-number: ${{ github.event.number }}
           is-prod: False
       - if: github.event.issue
         name: Run cherrypicker on closed issue
-        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
+        uses: iancha1992/continuous-integration/actions/cherry_picker@cherry-picker-vulnerability-fix
         with:
           triggered-on: closed
           pr-number: ${{ github.event.issue.number }}
@@ -43,7 +43,7 @@ jobs:
           egress-policy: audit
       - if: startsWith(github.event.issue.body, 'Forked from')
         name: Run cherrypicker on comment
-        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
+        uses: iancha1992/continuous-integration/actions/cherry_picker@cherry-picker-vulnerability-fix
         with:
           triggered-on: commented
           pr-number: ${{ github.event.issue.body }}
@@ -52,7 +52,7 @@ jobs:
           is-prod: False
       - if: startsWith(github.event.issue.body, '### Commit IDs')
         name: Run cherrypicker on demand
-        uses: iancha1992/continuous-integration/actions/cherry_picker@feature-cherrypick-phase2
+        uses: iancha1992/continuous-integration/actions/cherry_picker@cherry-picker-vulnerability-fix
         with:
           triggered-on: ondemand
           milestone-title: ${{ github.event.milestone.title }}
