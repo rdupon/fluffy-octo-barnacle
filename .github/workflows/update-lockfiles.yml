@@ -27,4 +27,5 @@ jobs:
         run: |
           # "${GITHUB_WORKSPACE}/bin/bazel" run //src/test/tools/bzlmod:update_default_lock_file
           "${GITHUB_WORKSPACE}/bin/bazel" mod deps --lockfile_mode=update
+          echo hello world!
           git diff
