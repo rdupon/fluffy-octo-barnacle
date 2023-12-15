@@ -8,6 +8,7 @@ on:
 jobs:
   update-lockfile:
     runs-on: ubuntu-latest
+    if: "contains(github.event.label.name, 'updatelock')"
 
     steps:
       - name: Check out code
@@ -17,18 +18,13 @@ jobs:
         with:
           path: "/home/runner/.cache/bazel"
           key: bazel
-      # - name: Install bazelisk
-      #   run: |
-      #     curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64"
-      #     mkdir -p "${GITHUB_WORKSPACE}/bin/"
-      #     mv bazelisk-linux-amd64 "${GITHUB_WORKSPACE}/bin/bazel"
-      #     chmod +x "${GITHUB_WORKSPACE}/bin/bazel"
-      - name: Update Lockfile
-        if: "contains(github.event.label.name, 'updatelock')"
+      - name: Install bazelisk
         run: |
           curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-linux-amd64"
           mkdir -p "${GITHUB_WORKSPACE}/bin/"
           mv bazelisk-linux-amd64 "${GITHUB_WORKSPACE}/bin/bazel"
           chmod +x "${GITHUB_WORKSPACE}/bin/bazel"
-          # "${GITHUB_WORKSPACE}/bin/bazel" run //src/test/tools/bzlmod:update_default_lock_file
-          # "${GITHUB_WORKSPACE}/bin/bazel" mod deps --lockfile_mode=update
+      - name: Update Lockfile
+        run: |
+          "${GITHUB_WORKSPACE}/bin/bazel" run //src/test/tools/bzlmod:update_default_lock_file
+          "${GITHUB_WORKSPACE}/bin/bazel" mod deps --lockfile_mode=update
