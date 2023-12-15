@@ -8,7 +8,7 @@ on:
 jobs:
   update-lockfile:
     runs-on: ubuntu-latest
-    if: "contains(github.event.label.name, 'updatelock')"
+    if: contains(github.event.label.name, 'updatelock')
 
     steps:
       - name: Check out code
