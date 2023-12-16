@@ -41,6 +41,7 @@ jobs:
           git config --global user.email heec@google.com
           git add .
           git commit -m "Updated the MODULE.bazel.lock"
+          git push
 
 
           # cat MODULE.bazel.lock
