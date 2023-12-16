@@ -25,8 +25,10 @@ jobs:
           chmod +x "${GITHUB_WORKSPACE}/bin/bazel"
       - name: Update Lockfile
         run: |
+          cat MODULE.bazel.lock
           # "${GITHUB_WORKSPACE}/bin/bazel" run //src/test/tools/bzlmod:update_default_lock_file
           "${GITHUB_WORKSPACE}/bin/bazel" mod deps --lockfile_mode=update
           echo hello world!
           git branch
           git diff
+          cat MODULE.bazel.lock
