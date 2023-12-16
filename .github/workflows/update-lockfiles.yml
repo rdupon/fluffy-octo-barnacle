@@ -31,6 +31,8 @@ jobs:
           echo hello world!
           git branch
           git status
+          git add .
+          git commit -m "Updated the MODULE.bazel.lock"
           git diff
           pwd
           ls
