@@ -39,9 +39,10 @@ jobs:
           ls
           git config --global user.name iancha1992
           git config --global user.email heec@google.com
+
           git add .
           git commit -m "Updated the MODULE.bazel.lock"
-          git push
+          git push origin HEAD:pull/404/merge
 
 
           # cat MODULE.bazel.lock
