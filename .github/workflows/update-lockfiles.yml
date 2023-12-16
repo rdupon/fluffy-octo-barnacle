@@ -31,4 +31,6 @@ jobs:
           echo hello world!
           git branch
           git diff
+          pwd
+          ls
           cat MODULE.bazel.lock
