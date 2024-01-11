@@ -136,7 +136,10 @@ class TestBase(absltest.TestCase):
         if TestBase.IsDarwin():
           # For reducing SSD usage on our physical Mac machines.
           f.write('common --experimental_repository_cache_hardlinks\n')
-      f.write('common --enable_bzlmod\n')
+      if TestBase.IsDarwin():
+        # Prefer ipv6 network on macOS
+        f.write('startup --host_jvm_args=-Djava.net.preferIPv6Addresses=true\n')
+        f.write('build --jvmopt=-Djava.net.preferIPv6Addresses\n')
     self.CopyFile(
         self.Rlocation('io_bazel/src/test/tools/bzlmod/MODULE.bazel.lock'),
         'MODULE.bazel.lock',
@@ -222,6 +225,11 @@ class TestBase(absltest.TestCase):
         ')',
     ])
     self.ScratchFile(path, rule_definition)
+    self.ScratchFile(
+        path.replace('WORKSPACE.bazel', 'MODULE.bazel').replace(
+            'WORKSPACE', 'MODULE.bazel'
+        )
+    )
 
   def GetDefaultRepoRules(self):
     with open(
@@ -554,7 +562,7 @@ class TestBase(absltest.TestCase):
         ]
 
         if not allow_failure:
-          self.AssertExitCode(exit_code, 0, stderr_lines)
+          self.AssertExitCode(exit_code, 0, stderr_lines, stdout_lines)
 
         return exit_code, stdout_lines, stderr_lines
 

@@ -47,6 +47,7 @@ java_library(
         "HighWaterMarkLimiter.java",
         "LocalRepositoryLookupFunction.java",
         "PackageFunction.java",
+        "PackageFunctionWithMultipleGlobDeps.java",
         "PrepareDepsOfPatternFunction.java",
         "SequencedSkyframeExecutor.java",
         "SequencedSkyframeExecutorFactory.java",
@@ -137,6 +138,7 @@ java_library(
         ":ignored_package_prefixes_function",
         ":ignored_package_prefixes_value",
         ":incremental_artifact_conflict_finder",
+        ":invalid_glob_pattern_exception",
         ":loading_phase_started_event",
         ":local_repository_lookup_value",
         ":map_as_package_roots",
@@ -563,8 +565,8 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/actions",
         "//src/main/java/com/google/devtools/build/lib/actions:action_lookup_key",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
-        "//src/main/java/com/google/devtools/build/lib/concurrent",
         "//src/main/java/com/google/devtools/build/lib/skyframe/config",
+        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization:visible-for-serialization",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec",
         "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
         "//third_party:guava",
@@ -748,6 +750,8 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/analysis:config/build_configuration",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
         "//src/main/java/com/google/devtools/build/lib/packages",
+        "//src/main/java/com/google/devtools/build/lib/packages:label_printer",
+        "//src/main/java/com/google/devtools/build/lib/query2/common:cquery-node",
         "//src/main/java/com/google/devtools/build/lib/skyframe/config",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization:visible-for-serialization",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec",
@@ -1078,8 +1082,8 @@ java_library(
         ":sky_functions",
         "//src/main/java/com/google/devtools/build/lib/actions:action_lookup_key",
         "//src/main/java/com/google/devtools/build/lib/analysis:config/build_configuration",
-        "//src/main/java/com/google/devtools/build/lib/analysis:configured_target",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
+        "//src/main/java/com/google/devtools/build/lib/query2/common:cquery-node",
         "//src/main/java/com/google/devtools/build/lib/skyframe/config",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec",
         "//src/main/java/com/google/devtools/build/lib/util:hash_codes",
@@ -1410,6 +1414,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/cmdline",
         "//src/main/java/com/google/devtools/build/lib/concurrent",
         "//src/main/java/com/google/devtools/build/lib/packages:globber",
+        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization:visible-for-serialization",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec",
         "//src/main/java/com/google/devtools/build/lib/util:string",
         "//src/main/java/com/google/devtools/build/lib/vfs",
@@ -1420,11 +1425,28 @@ java_library(
 )
 
 java_library(
+    name = "glob_exception",
+    srcs = ["GlobException.java"],
+    deps = [
+        "//src/main/java/com/google/devtools/build/lib/io:file_symlink_infinite_expansion_exception",
+        "//src/main/java/com/google/devtools/build/lib/io:inconsistent_filesystem_exception",
+        "//src/main/java/com/google/devtools/build/lib/packages/producers",
+        "//src/main/java/com/google/devtools/build/skyframe",
+        "//third_party:jsr305",
+    ],
+)
+
+java_library(
     name = "glob_function",
-    srcs = ["GlobFunction.java"],
+    srcs = [
+        "GlobFunction.java",
+        "GlobFunctionWithMultipleRecursiveFunctions.java",
+        "GlobFunctionWithRecursionInSingleFunction.java",
+    ],
     deps = [
         ":directory_listing_value",
         ":glob_descriptor",
+        ":glob_exception",
         ":glob_value",
         ":ignored_package_prefixes_value",
         ":package_lookup_value",
@@ -1435,6 +1457,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/io:file_symlink_infinite_expansion_uniqueness_function",
         "//src/main/java/com/google/devtools/build/lib/io:inconsistent_filesystem_exception",
         "//src/main/java/com/google/devtools/build/lib/packages:globber",
+        "//src/main/java/com/google/devtools/build/lib/packages/producers",
         "//src/main/java/com/google/devtools/build/lib/vfs",
         "//src/main/java/com/google/devtools/build/lib/vfs:pathfragment",
         "//src/main/java/com/google/devtools/build/skyframe",
@@ -1445,14 +1468,51 @@ java_library(
 )
 
 java_library(
+    name = "globs_function",
+    srcs = ["GlobsFunction.java"],
+    deps = [
+        ":glob_exception",
+        ":globs_value",
+        "//src/main/java/com/google/devtools/build/lib/packages/producers",
+        "//src/main/java/com/google/devtools/build/lib/vfs:pathfragment",
+        "//src/main/java/com/google/devtools/build/skyframe",
+        "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
+        "//third_party:guava",
+        "//third_party:jsr305",
+    ],
+)
+
+java_library(
     name = "glob_value",
-    srcs = ["GlobValue.java"],
+    srcs = [
+        "GlobValue.java",
+        "GlobValueWithImmutableSet.java",
+        "GlobValueWithNestedSet.java",
+    ],
     deps = [
         ":glob_descriptor",
+        ":invalid_glob_pattern_exception",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
         "//src/main/java/com/google/devtools/build/lib/collect/nestedset",
         "//src/main/java/com/google/devtools/build/lib/concurrent",
         "//src/main/java/com/google/devtools/build/lib/packages:globber",
+        "//src/main/java/com/google/devtools/build/lib/vfs",
+        "//src/main/java/com/google/devtools/build/lib/vfs:pathfragment",
+        "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
+        "//third_party:guava",
+    ],
+)
+
+java_library(
+    name = "globs_value",
+    srcs = ["GlobsValue.java"],
+    deps = [
+        ":invalid_glob_pattern_exception",
+        ":sky_functions",
+        "//src/main/java/com/google/devtools/build/lib/cmdline",
+        "//src/main/java/com/google/devtools/build/lib/packages:globber",
+        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization:visible-for-serialization",
+        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/autocodec",
         "//src/main/java/com/google/devtools/build/lib/vfs",
         "//src/main/java/com/google/devtools/build/lib/vfs:pathfragment",
         "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
@@ -1516,6 +1576,14 @@ java_library(
     deps = [
         "//third_party:guava",
         "//third_party:jsr305",
+    ],
+)
+
+java_library(
+    name = "invalid_glob_pattern_exception",
+    srcs = ["InvalidGlobPatternException.java"],
+    deps = [
+        "//src/main/java/com/google/devtools/build/lib/concurrent",
     ],
 )
 
@@ -2198,6 +2266,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
         "//third_party:auto_value",
         "//third_party:guava",
+        "//third_party:jsr305",
     ],
 )
 

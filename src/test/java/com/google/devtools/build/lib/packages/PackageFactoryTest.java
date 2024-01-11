@@ -245,8 +245,7 @@ public final class PackageFactoryTest extends PackageLoadingTestCase {
         "x = 1//0"); // not reached
     Package pkg = loadPackage("duplicaterulename");
     assertContainsEvent(
-        "cc_library rule 'spellcheck_proto' in package 'duplicaterulename' conflicts with"
-            + " existing proto_library rule");
+        "cc_library rule 'spellcheck_proto' conflicts with" + " existing proto_library rule");
     assertDoesNotContainEvent("division by zero");
     assertThat(pkg.containsErrors()).isTrue();
   }
@@ -303,10 +302,7 @@ public final class PackageFactoryTest extends PackageLoadingTestCase {
     NoSuchTargetException e = assertThrows(NoSuchTargetException.class, () -> pkg.getTarget("B"));
     assertThat(e)
         .hasMessageThat()
-        .isEqualTo(
-            "no such target '//foo:B': target 'B' not declared in package 'foo' defined by"
-                + " /workspace/foo/BUILD (Tip: use `query \"//foo:*\"` to see all the targets in"
-                + " that package)");
+        .contains("no such target '//foo:B': target 'B' not declared in package 'foo'");
 
     // These are the only input files: BUILD, Z
     Set<String> inputFiles = Sets.newTreeSet();
@@ -328,8 +324,7 @@ public final class PackageFactoryTest extends PackageLoadingTestCase {
         "cc_library(name = 'dup_proto',",
         "           srcs = ['dup.pb.cc', 'dup.pb.h'])");
     Package pkg = loadPackage("dup");
-    assertContainsEvent(
-        "cc_library rule 'dup_proto' in package 'dup' conflicts with existing proto_library rule");
+    assertContainsEvent("cc_library rule 'dup_proto' conflicts with existing proto_library rule");
     assertThat(pkg.containsErrors()).isTrue();
 
     Rule dupProto = pkg.getRule("dup_proto");
@@ -443,9 +438,9 @@ public final class PackageFactoryTest extends PackageLoadingTestCase {
     assertThat(e)
         .hasMessageThat()
         .isEqualTo(
-            "no such target '//x:z.cc': target 'z.cc' not declared in package 'x' defined by"
-                + " /workspace/x/BUILD (did you mean 'x.cc'? Tip: use `query \"//x:*\"` to see all"
-                + " the targets in that package)");
+            "no such target '//x:z.cc': "
+                + "target 'z.cc' not declared in package 'x' "
+                + "defined by /workspace/x/BUILD (did you mean x.cc?)");
 
     e = assertThrows(NoSuchTargetException.class, () -> pkg.getTarget("dir"));
     assertThat(e)
@@ -730,7 +725,7 @@ public final class PackageFactoryTest extends PackageLoadingTestCase {
   @Test
   public void testBadCharacterInGlob() throws Exception {
     reporter.removeHandler(failFastHandler);
-    assertGlobFails("glob(['?'])", "Error in glob: wildcard ? forbidden");
+    assertGlobFails("glob(['?'])", "Error in glob: invalid glob pattern '?': wildcard ? forbidden");
   }
 
   @Test
@@ -1015,7 +1010,7 @@ public final class PackageFactoryTest extends PackageLoadingTestCase {
   @Test
   public void testGenruleExportConflict() throws Exception {
     expectEvalError(
-        "generated label '//pkg:a.cc' conflicts with existing generated file",
+        "source file 'a.cc' conflicts with existing generated file from rule 'foo'",
         "genrule(name = 'foo',",
         "    outs = ['a.cc'],",
         "    cmd = '')",

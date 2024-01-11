@@ -17,6 +17,7 @@ package com.google.devtools.build.lib.rules.objc;
 import static com.google.devtools.build.lib.packages.Attribute.attr;
 import static com.google.devtools.build.lib.packages.BuildType.LABEL;
 import static com.google.devtools.build.lib.packages.BuildType.LABEL_LIST;
+import static com.google.devtools.build.lib.packages.BuildType.NODEP_LABEL;
 import static com.google.devtools.build.lib.packages.Type.BOOLEAN;
 import static com.google.devtools.build.lib.packages.Type.STRING;
 import static com.google.devtools.build.lib.packages.Type.STRING_LIST;
@@ -38,6 +39,8 @@ import com.google.devtools.build.lib.packages.Type;
 import com.google.devtools.build.lib.rules.apple.AppleConfiguration;
 import com.google.devtools.build.lib.rules.apple.ApplePlatform;
 import com.google.devtools.build.lib.rules.cpp.CcInfo;
+import com.google.devtools.build.lib.rules.cpp.CcToolchainProvider;
+import com.google.devtools.build.lib.rules.cpp.CcToolchainRule;
 import com.google.devtools.build.lib.rules.cpp.CppRuleClasses;
 import com.google.devtools.build.lib.util.FileType;
 import com.google.devtools.build.lib.util.FileTypeSet;
@@ -166,9 +169,7 @@ public class ObjcRuleClasses {
     public RuleClass build(RuleClass.Builder builder, RuleDefinitionEnvironment environment) {
       return builder
           /* <!-- #BLAZE_RULE($objc_sdk_frameworks_depender_rule).ATTRIBUTE(sdk_frameworks) -->
-          Names of SDK frameworks to link with (e.g. "AddressBook", "QuartzCore"). "UIKit" and
-          "Foundation" are always included when building for the iOS, tvOS, visionOS,
-          and watchOS platforms. For macOS, only "Foundation" is always included.
+          Names of SDK frameworks to link with (e.g. "AddressBook", "QuartzCore").
 
           <p> When linking a top level Apple binary, all SDK frameworks listed in that binary's
           transitive dependency graph are linked.
@@ -252,6 +253,13 @@ public class ObjcRuleClasses {
     @Override
     public RuleClass build(RuleClass.Builder builder, RuleDefinitionEnvironment env) {
       return builder
+          .add(
+              attr(CcToolchainRule.CC_TOOLCHAIN_DEFAULT_ATTRIBUTE_NAME, LABEL)
+                  .mandatoryProviders(CcToolchainProvider.PROVIDER.id())
+                  .value(CppRuleClasses.ccToolchainAttribute(env)))
+          .add(
+              attr(CcToolchainRule.CC_TOOLCHAIN_TYPE_ATTRIBUTE_NAME, NODEP_LABEL)
+                  .value(CppRuleClasses.ccToolchainTypeAttribute(env)))
           .addToolchainTypes(CppRuleClasses.ccToolchainTypeRequirement(env))
           .build();
     }

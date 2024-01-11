@@ -14,11 +14,15 @@
 package com.google.devtools.build.lib.cmdline;
 
 import static com.google.devtools.build.lib.cmdline.LabelParser.validateAndProcessTargetName;
+import static java.util.Comparator.naturalOrder;
 
 import com.google.auto.value.AutoValue;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ComparisonChain;
+import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableTable;
+import com.google.common.collect.Table;
 import com.google.common.util.concurrent.Striped;
 import com.google.devtools.build.docgen.annot.DocCategory;
 import com.google.devtools.build.lib.actions.CommandLineItem;
@@ -29,11 +33,11 @@ import com.google.devtools.build.lib.concurrent.ThreadSafety;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ThreadSafe;
 import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
-import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.skyframe.SkyFunctionName;
 import com.google.devtools.build.skyframe.SkyKey;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import javax.annotation.Nullable;
@@ -63,7 +67,6 @@ import net.starlark.java.eval.StarlarkValue;
             + "<p>For every <code>Label</code> instance <code>l</code>, the string representation"
             + " <code>str(l)</code> has the property that <code>Label(str(l)) == l</code>,"
             + " regardless of where the <code>Label()</code> call occurs.")
-@AutoCodec
 @Immutable
 @ThreadSafe
 public final class Label implements Comparable<Label>, StarlarkValue, SkyKey, CommandLineItem {
@@ -193,7 +196,23 @@ public final class Label implements Comparable<Label>, StarlarkValue, SkyKey, Co
    */
   public static Label parseWithPackageContext(String raw, PackageContext packageContext)
       throws LabelSyntaxException {
+    return parseWithPackageContextInternal(Parts.parse(raw), packageContext);
+  }
+
+  public static Label parseWithPackageContext(
+      String raw, PackageContext packageContext, @Nullable RepoMappingRecorder repoMappingRecorder)
+      throws LabelSyntaxException {
     Parts parts = Parts.parse(raw);
+    Label parsed = parseWithPackageContextInternal(parts, packageContext);
+    if (repoMappingRecorder != null && parts.repo() != null && !parts.repoIsCanonical()) {
+      repoMappingRecorder.entries.put(
+          packageContext.currentRepo(), parts.repo(), parsed.getRepository());
+    }
+    return parsed;
+  }
+
+  private static Label parseWithPackageContextInternal(Parts parts, PackageContext packageContext)
+      throws LabelSyntaxException {
     parts.checkPkgDoesNotEndWithTripleDots();
     // pkg is either absolute or empty
     if (!parts.pkg().isEmpty()) {
@@ -203,6 +222,24 @@ public final class Label implements Comparable<Label>, StarlarkValue, SkyKey, Co
     PathFragment pkgFragment =
         parts.pkgIsAbsolute() ? PathFragment.create(parts.pkg()) : packageContext.packageFragment();
     return createUnvalidated(PackageIdentifier.create(repoName, pkgFragment), parts.target());
+  }
+
+  /** Records repo mapping entries used by {@link #parseWithPackageContext}. */
+  public static final class RepoMappingRecorder {
+    /** {@code <fromRepo, apparentRepoName, canonicalRepoName> } */
+    Table<RepositoryName, String, RepositoryName> entries = HashBasedTable.create();
+
+    public void mergeEntries(Table<RepositoryName, String, RepositoryName> entries) {
+      this.entries.putAll(entries);
+    }
+
+    public ImmutableTable<RepositoryName, String, RepositoryName> recordedEntries() {
+      return ImmutableTable.<RepositoryName, String, RepositoryName>builder()
+          .orderRowsBy(Comparator.comparing(RepositoryName::getName))
+          .orderColumnsBy(naturalOrder())
+          .putAll(entries)
+          .buildOrThrow();
+    }
   }
 
   /**
@@ -240,15 +277,18 @@ public final class Label implements Comparable<Label>, StarlarkValue, SkyKey, Co
    * <p>Only call this method if you know what you're doing; in particular, don't call it on
    * arbitrary {@code name} inputs
    */
-  @AutoCodec.Instantiator
   public static Label createUnvalidated(PackageIdentifier packageIdentifier, String name) {
-    String internedName = name;
-    if (internedName.equals(PKG_VISIBILITY_NAME)) {
-      internedName = PKG_VISIBILITY_NAME;
-    } else if (internedName.equals(SUBPACKAGES_VISIBILITY_NAME)) {
-      internedName = SUBPACKAGES_VISIBILITY_NAME;
+    return interner.intern(new Label(packageIdentifier, internIfConstantName(name)));
+  }
+
+  static String internIfConstantName(String name) {
+    if (name.equals(PKG_VISIBILITY_NAME)) {
+      return PKG_VISIBILITY_NAME;
     }
-    return interner.intern(new Label(packageIdentifier, internedName));
+    if (name.equals(SUBPACKAGES_VISIBILITY_NAME)) {
+      return SUBPACKAGES_VISIBILITY_NAME;
+    }
+    return name;
   }
 
   /** The name and repository of the package. */
@@ -464,10 +504,10 @@ public final class Label implements Comparable<Label>, StarlarkValue, SkyKey, Co
    * @throws LabelSyntaxException if {@code targetName} is not a valid target name
    */
   @StarlarkMethod(
-      name = "local_target_label",
+      name = "same_package_label",
       doc = "Creates a label in the same package as this label with the given target name.",
       parameters = {@Param(name = "target_name", doc = "The target name of the new label.")})
-  public Label getLocalTargetLabel(String targetName) throws LabelSyntaxException {
+  public Label getSamePackageLabel(String targetName) throws LabelSyntaxException {
     return create(packageIdentifier, targetName);
   }
 
@@ -485,7 +525,7 @@ public final class Label implements Comparable<Label>, StarlarkValue, SkyKey, Co
       doc =
           "<strong>Deprecated.</strong> This method behaves surprisingly when used with an argument"
               + " containing an apparent repo name. Prefer <a"
-              + " href=\"#local_target_label\"><code>Label.local_target_label()</code></a>, <a"
+              + " href=\"#local_target_label\"><code>Label.same_package_label()</code></a>, <a"
               + " href=\"../toplevel/native#package_relative_label\"><code>native.package_relative_label()</code></a>,"
               + " or <a href=\"#Label\"><code>Label()</code></a> instead.<p>Resolves a label that"
               + " is either absolute (starts with <code>//</code>) or relative to the current"

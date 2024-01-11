@@ -23,11 +23,11 @@ import com.google.common.collect.ImmutableMap;
 import com.google.devtools.build.lib.cmdline.RepositoryMapping;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.packages.Package.Builder.PackageSettings;
+import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.testutil.TestRuleClassProvider;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.Root;
 import com.google.devtools.build.lib.vfs.RootedPath;
-import java.util.List;
 import net.starlark.java.eval.Mutability;
 import net.starlark.java.eval.StarlarkSemantics;
 import net.starlark.java.syntax.ParserInput;
@@ -70,7 +70,8 @@ final class WorkspaceFactoryTestHelper {
                 RootedPath.toRootedPath(root, workspaceFilePath),
                 "",
                 RepositoryMapping.ALWAYS_FALLBACK,
-                StarlarkSemantics.DEFAULT,
+                starlarkSemantics.getBool(
+                    BuildLanguageOptions.INCOMPATIBLE_NO_IMPLICIT_FILE_EXPORT),
                 PackageOverheadEstimator.NOOP_ESTIMATOR)
             .setLoads(ImmutableList.of());
     WorkspaceFactory factory =
@@ -99,7 +100,7 @@ final class WorkspaceFactoryTestHelper {
   }
 
   String getParserError() {
-    List<Event> events = builder.getEvents();
+    ImmutableList<Event> events = builder.getLocalEventHandler().getEvents();
     assertThat(events.size()).isGreaterThan(0);
     return events.get(0).getMessage();
   }

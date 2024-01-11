@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Sets;
+import com.google.common.collect.Streams;
 import com.google.common.eventbus.Subscribe;
 import com.google.common.flogger.GoogleLogger;
 import com.google.devtools.build.lib.actions.Action;
@@ -115,7 +116,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 /**
@@ -181,7 +181,8 @@ public class ExecutionTool {
     }
     actionContextRegistryBuilder.register(
         SymlinkTreeActionContext.class,
-        new SymlinkTreeStrategy(env.getOutputService(), env.getBlazeWorkspace().getBinTools()));
+        new SymlinkTreeStrategy(
+            env.getOutputService(), env.getBlazeWorkspace().getBinTools(), env.getWorkspaceName()));
     // TODO(philwo) - the ExecutionTool should not add arbitrary dependencies on its own, instead
     // these dependencies should be added to the ActionContextConsumer of the module that actually
     // depends on them.
@@ -995,11 +996,16 @@ public class ExecutionTool {
     ImmutableMap<String, Double> cpuRam =
         ImmutableMap.of(
             ResourceSet.CPU,
+            // Replace with 1.0 * ResourceConverter.HOST_CPUS.get() after flag deprecation
             options.localCpuResources,
             ResourceSet.MEMORY,
+            // Replace with 0.67 * ResourceConverter.HOST_RAM.get() after flag deprecation
             options.localRamResources);
     ImmutableMap<String, Double> resources =
-        Stream.concat(options.localExtraResources.stream(), cpuRam.entrySet().stream())
+        Streams.concat(
+                options.localExtraResources.stream(),
+                cpuRam.entrySet().stream(),
+                options.localResources.stream())
             .collect(
                 ImmutableMap.toImmutableMap(
                     Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v2));

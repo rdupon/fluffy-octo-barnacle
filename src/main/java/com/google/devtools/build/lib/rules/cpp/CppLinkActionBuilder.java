@@ -893,13 +893,7 @@ public class CppLinkActionBuilder {
     LinkCommandLine.Builder linkCommandLineBuilder =
         new LinkCommandLine.Builder()
             .setActionName(getActionName())
-            .setLinkerInputArtifacts(
-                NestedSetBuilder.<Artifact>stableOrder()
-                    .addTransitive(expandedLinkerArtifacts)
-                    .addTransitive(linkstampObjectArtifacts)
-                    .build())
             .setLinkTargetType(linkType)
-            .setLinkingMode(linkingMode)
             .setToolchainLibrariesSolibDir(
                 linkType.linkerOrArchiver() == LinkerOrArchiver.ARCHIVER
                     ? null
@@ -913,10 +907,6 @@ public class CppLinkActionBuilder {
     if (shouldUseLinkDynamicLibraryTool()) {
       linkCommandLineBuilder.forceToolPath(
           toolchain.getLinkDynamicLibraryTool().getExecPathString());
-    }
-
-    if (!isLtoIndexing) {
-      linkCommandLineBuilder.setBuildInfoHeaderArtifacts(buildInfoHeaderArtifacts);
     }
 
     linkCommandLineBuilder.setBuildVariables(buildVariables);
@@ -1048,8 +1038,7 @@ public class CppLinkActionBuilder {
             Tool.LD,
             toolchain.getCcToolchainLabel(),
             toolchain.getToolchainIdentifier(),
-            ruleErrorConsumer),
-        toolchain.getTargetCpu());
+            ruleErrorConsumer));
   }
 
   /** We're doing 4-phased lto build, and this is the final link action (4-th phase). */

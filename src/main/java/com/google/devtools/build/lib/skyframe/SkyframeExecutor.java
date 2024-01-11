@@ -596,7 +596,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
         SkyFunctions.STARLARK_BUILTINS,
         new StarlarkBuiltinsFunction(ruleClassProvider.getBazelStarlarkEnvironment()));
     map.put(SkyFunctions.BZL_LOAD, newBzlLoadFunction(ruleClassProvider));
-    GlobFunction globFunction = new GlobFunction();
+    GlobFunction globFunction = newGlobFunction();
     map.put(SkyFunctions.GLOB, globFunction);
     this.globFunction = globFunction;
     map.put(SkyFunctions.TARGET_PATTERN, new TargetPatternFunction());
@@ -616,18 +616,19 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
     map.put(SkyFunctions.RECURSIVE_PKG, new RecursivePkgFunction(directories));
     map.put(
         SkyFunctions.PACKAGE,
-        new PackageFunction(
-            pkgFactory,
-            packageManager,
-            showLoadingProgress,
-            numPackagesSuccessfullyLoaded,
-            bzlLoadFunctionForInliningPackageAndWorkspaceNodes,
-            packageProgress,
-            actionOnIOExceptionReadingBuildFile,
-            shouldUseRepoDotBazel,
-            getGlobbingStrategy(),
-            skyKeyStateReceiver::makeThreadStateReceiver,
-            cpuBoundSemaphore));
+        PackageFunction.newBuilder()
+            .setPackageFactory(pkgFactory)
+            .setPackageLocator(packageManager)
+            .setShowLoadingProgress(showLoadingProgress)
+            .setNumPackagesSuccessfullyLoaded(numPackagesSuccessfullyLoaded)
+            .setBzlLoadFunctionForInlining(bzlLoadFunctionForInliningPackageAndWorkspaceNodes)
+            .setPackageProgress(packageProgress)
+            .setActionOnIOExceptionReadingBuildFile(actionOnIOExceptionReadingBuildFile)
+            .setShouldUseRepoDotBazel(shouldUseRepoDotBazel)
+            .setGlobbingStrategy(getGlobbingStrategy())
+            .setThreadStateReceiverFactoryForMetrics(skyKeyStateReceiver::makeThreadStateReceiver)
+            .setCpuBoundSemaphore(cpuBoundSemaphore)
+            .build());
     map.put(SkyFunctions.PACKAGE_ERROR, new PackageErrorFunction());
     map.put(SkyFunctions.PACKAGE_ERROR_MESSAGE, new PackageErrorMessageFunction());
     map.put(SkyFunctions.TARGET_PATTERN_ERROR, new TargetPatternErrorFunction());
@@ -737,7 +738,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
         new PlatformMappingFunction(ruleClassProvider.getFragmentRegistry().getOptionsClasses()));
     map.put(
         SkyFunctions.ARTIFACT_NESTED_SET,
-        ArtifactNestedSetFunction.createInstance(this::getConsumedArtifactsTracker));
+        new ArtifactNestedSetFunction(this::getConsumedArtifactsTracker));
     BuildDriverFunction buildDriverFunction =
         new BuildDriverFunction(
             new TransitiveActionLookupValuesHelper() {
@@ -774,6 +775,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
     return new ActionExecutionFunction(
         actionRewindStrategy,
         skyframeActionExecutor,
+        () -> memoizingEvaluator,
         directories,
         tsgm::get,
         bugReporter,
@@ -783,6 +785,10 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
 
   protected SkyFunction newCollectPackagesUnderDirectoryFunction(BlazeDirectories directories) {
     return new CollectPackagesUnderDirectoryFunction(directories);
+  }
+
+  protected GlobFunction newGlobFunction() {
+    return GlobFunction.create(/* recursionInSingleFunction= */ true);
   }
 
   @Nullable
@@ -965,7 +971,6 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
     analysisCacheInvalidated = true;
     skyframeBuildView.clearInvalidatedActionLookupKeys();
     skyframeBuildView.clearLegacyData();
-    ArtifactNestedSetFunction.getInstance().resetArtifactNestedSetFunctionMaps();
   }
 
   /** Used with dump --rules. */
@@ -1847,6 +1852,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
         PlatformMappingValue.Key.create(platformMappingPath);
     EvaluationResult<SkyValue> evaluationResult =
         evaluateSkyKeys(eventHandler, ImmutableSet.of(platformMappingKey));
+    // Handle all possible errors with the platform mapping by reporting them to the user.
     if (evaluationResult.hasError()) {
       throw new InvalidConfigurationException(
           Code.PLATFORM_MAPPING_EVALUATION_FAILURE, evaluationResult.getError().getException());
@@ -3736,22 +3742,6 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
     recordingDiffer.inject(diff.changedKeysWithNewValues());
     // Blaze invalidates transient errors on every build.
     invalidateTransientErrors();
-  }
-
-  /** Returns a dynamic configuration constructed from the given build options. */
-  @VisibleForTesting
-  public BuildConfigurationValue getConfigurationForTesting(
-      ExtendedEventHandler eventHandler, BuildOptions options)
-      throws InterruptedException, InvalidConfigurationException {
-    BuildConfigurationKey buildConfigurationKey =
-        createBuildConfigurationKey(eventHandler, options);
-    return (BuildConfigurationValue)
-        evaluate(
-                ImmutableList.of(buildConfigurationKey),
-                /* keepGoing= */ false,
-                /* numThreads= */ DEFAULT_THREAD_COUNT,
-                eventHandler)
-            .get(buildConfigurationKey);
   }
 
   /** Returns a particular configured target. */
