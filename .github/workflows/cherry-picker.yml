@@ -14,7 +14,7 @@ env:
 
 jobs:
   cherry-picker-on-closed:
-    if: github.event.action == 'closed' && github.event.sender.login == 'copybara-service[bot]'
+    if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
