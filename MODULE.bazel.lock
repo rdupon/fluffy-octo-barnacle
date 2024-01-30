@@ -8775,7 +8775,7 @@
         "recordedRepoMappingEntries": []
       },
       "os:linux,arch:amd64": {
-        "bzlTransitiveDigest": "8ozZeXZLMP2XAUvOsoOqqAh+f3capth/BEC9p7XrFHQ=",
+        "bzlTransitiveDigest": "G6KYy2g2q2nZLeFH0iTUPavkolvqd/yzny2kKKJvA/c=",
         "accumulatedFileDigests": {
           "@@//:requirements.txt": "ff12967a755bb8e9b4c92524f6471a99e14c30474a3d428547c55745ec8f23a0"
         },
@@ -8816,7 +8816,123 @@
             }
           }
         },
-        "recordedRepoMappingEntries": []
+        "recordedRepoMappingEntries": [
+          [
+            "bazel_features~1.1.0",
+            "bazel_features_globals",
+            "bazel_features~1.1.0~version_extension~bazel_features_globals"
+          ],
+          [
+            "bazel_features~1.1.0",
+            "bazel_features_version",
+            "bazel_features~1.1.0~version_extension~bazel_features_version"
+          ],
+          [
+            "rules_python~0.26.0",
+            "bazel_features",
+            "bazel_features~1.1.0"
+          ],
+          [
+            "rules_python~0.26.0",
+            "bazel_skylib",
+            "bazel_skylib~1.4.1"
+          ],
+          [
+            "rules_python~0.26.0",
+            "bazel_tools",
+            "bazel_tools"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__build",
+            "rules_python~0.26.0~internal_deps~pypi__build"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__click",
+            "rules_python~0.26.0~internal_deps~pypi__click"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__colorama",
+            "rules_python~0.26.0~internal_deps~pypi__colorama"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__importlib_metadata",
+            "rules_python~0.26.0~internal_deps~pypi__importlib_metadata"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__installer",
+            "rules_python~0.26.0~internal_deps~pypi__installer"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__more_itertools",
+            "rules_python~0.26.0~internal_deps~pypi__more_itertools"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__packaging",
+            "rules_python~0.26.0~internal_deps~pypi__packaging"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__pep517",
+            "rules_python~0.26.0~internal_deps~pypi__pep517"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__pip",
+            "rules_python~0.26.0~internal_deps~pypi__pip"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__pip_tools",
+            "rules_python~0.26.0~internal_deps~pypi__pip_tools"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__pyproject_hooks",
+            "rules_python~0.26.0~internal_deps~pypi__pyproject_hooks"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__setuptools",
+            "rules_python~0.26.0~internal_deps~pypi__setuptools"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__tomli",
+            "rules_python~0.26.0~internal_deps~pypi__tomli"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__wheel",
+            "rules_python~0.26.0~internal_deps~pypi__wheel"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pypi__zipp",
+            "rules_python~0.26.0~internal_deps~pypi__zipp"
+          ],
+          [
+            "rules_python~0.26.0",
+            "pythons_hub",
+            "rules_python~0.26.0~python~pythons_hub"
+          ],
+          [
+            "rules_python~0.26.0~python~pythons_hub",
+            "python_3_11_x86_64-unknown-linux-gnu",
+            "rules_python~0.26.0~python~python_3_11_x86_64-unknown-linux-gnu"
+          ],
+          [
+            "rules_python~0.26.0~python~pythons_hub",
+            "python_3_8_x86_64-unknown-linux-gnu",
+            "rules_python~0.26.0~python~python_3_8_x86_64-unknown-linux-gnu"
+          ]
+        ]
       }
     },
     "@@rules_python~0.26.0//python/extensions:python.bzl%python": {
