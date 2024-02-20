@@ -54,11 +54,11 @@ jobs:
           is-prod: False
       - if: startsWith(github.event.issue.body, '### Commit IDs')
         name: Run cherrypicker on demand
-        uses: iancha1992/continuous-integration/actions/cherry_picker@lockfile-test
+        uses: bazelbuild/continuous-integration/actions/cherry_picker@9817b29fbb4b1fda32afb83b29574ec2d491feeb
         with:
           triggered-on: ondemand
           milestone-title: ${{ github.event.milestone.title }}
           milestoned-issue-number: ${{ github.event.issue.number }}
           issue-title: ${{ github.event.issue.title }}
           issue-body: ${{ github.event.issue.body }}
-          is-prod: False
+          is-prod: True
