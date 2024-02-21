@@ -16,6 +16,13 @@ package com.google.devtools.build.lib.bazel.rules.genrule;
 
 import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.packages.Type;
+import com.google.common.collect.ImmutableMap;
+import com.google.devtools.build.lib.actions.Artifact;
+import com.google.devtools.build.lib.analysis.AliasProvider;
+import com.google.devtools.build.lib.analysis.FileProvider;
+import com.google.devtools.build.lib.analysis.TransitiveInfoCollection;
+import com.google.devtools.build.lib.cmdline.Label;
+import com.google.devtools.build.lib.collect.nestedset.NestedSet;
 import com.google.devtools.build.lib.rules.genrule.GenRuleBase;
 
 /**
@@ -29,5 +36,16 @@ public class BazelGenRule extends GenRuleBase {
       return false;
     }
     return ruleContext.attributes().get("stamp", Type.BOOLEAN);
+  protected ImmutableMap<Label, NestedSet<Artifact>> collectSources(
+      List<? extends TransitiveInfoCollection> srcs) {
+    ImmutableMap.Builder<Label, NestedSet<Artifact>> labelMap =
+        ImmutableMap.builderWithExpectedSize(srcs.size());
+
+    for (TransitiveInfoCollection dep : srcs) {
+      NestedSet<Artifact> files = dep.getProvider(FileProvider.class).getFilesToBuild();
+      labelMap.put(AliasProvider.getDependencyLabel(dep), files);
+    }
+
+    return labelMap.buildOrThrow();
   }
 }
