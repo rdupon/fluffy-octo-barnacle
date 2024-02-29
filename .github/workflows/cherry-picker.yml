@@ -27,14 +27,14 @@ jobs:
         with:
           triggered-on: closed
           pr-number: ${{ github.event.number }}
-          is-prod: True
+          is-prod: False
       - if: github.event.issue
         name: Run cherrypicker on closed issue
         uses: iancha1992/continuous-integration/actions/cherry_picker@lockfile-test
         with:
           triggered-on: closed
           pr-number: ${{ github.event.issue.number }}
-          is-prod: True
+          is-prod: False
   cherry-picker-on-milestoned:
     if: github.event.action == 'milestoned'
     runs-on: ubuntu-latest
@@ -51,7 +51,7 @@ jobs:
           pr-number: ${{ github.event.issue.body }}
           milestone-title: ${{ github.event.milestone.title }}
           milestoned-issue-number: ${{ github.event.issue.number }}
-          is-prod: True
+          is-prod: False
       - if: startsWith(github.event.issue.body, '### Commit IDs')
         name: Run cherrypicker on demand
         uses: iancha1992/continuous-integration/actions/cherry_picker@lockfile-test
@@ -61,4 +61,4 @@ jobs:
           milestoned-issue-number: ${{ github.event.issue.number }}
           issue-title: ${{ github.event.issue.title }}
           issue-body: ${{ github.event.issue.body }}
-          is-prod: True
+          is-prod: False
