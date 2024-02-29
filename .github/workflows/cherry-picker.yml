@@ -14,7 +14,7 @@ env:
 
 jobs:
   cherry-picker-on-closed:
-    if: github.event.action == 'closed' && github.event.sender.login == 'copybara-service[bot]'
+    if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
@@ -23,14 +23,14 @@ jobs:
           egress-policy: audit
       - if: github.event.pull_request
         name: Run cherrypicker on closed PR
-        uses: bazelbuild/continuous-integration/actions/cherry_picker@9817b29fbb4b1fda32afb83b29574ec2d491feeb
+        uses: iancha1992/continuous-integration/actions/cherry_picker@lockfile-test
         with:
           triggered-on: closed
           pr-number: ${{ github.event.number }}
           is-prod: True
       - if: github.event.issue
         name: Run cherrypicker on closed issue
-        uses: bazelbuild/continuous-integration/actions/cherry_picker@9817b29fbb4b1fda32afb83b29574ec2d491feeb
+        uses: iancha1992/continuous-integration/actions/cherry_picker@lockfile-test
         with:
           triggered-on: closed
           pr-number: ${{ github.event.issue.number }}
@@ -45,7 +45,7 @@ jobs:
           egress-policy: audit
       - if: startsWith(github.event.issue.body, 'Forked from')
         name: Run cherrypicker on comment
-        uses: bazelbuild/continuous-integration/actions/cherry_picker@9817b29fbb4b1fda32afb83b29574ec2d491feeb
+        uses: iancha1992/continuous-integration/actions/cherry_picker@lockfile-test
         with:
           triggered-on: commented
           pr-number: ${{ github.event.issue.body }}
@@ -54,7 +54,7 @@ jobs:
           is-prod: True
       - if: startsWith(github.event.issue.body, '### Commit IDs')
         name: Run cherrypicker on demand
-        uses: bazelbuild/continuous-integration/actions/cherry_picker@9817b29fbb4b1fda32afb83b29574ec2d491feeb
+        uses: iancha1992/continuous-integration/actions/cherry_picker@lockfile-test
         with:
           triggered-on: ondemand
           milestone-title: ${{ github.event.milestone.title }}
