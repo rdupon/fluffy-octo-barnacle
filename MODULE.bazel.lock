@@ -1,6 +1,6 @@
 {
-  "lockFileVersion": 88,
-  "moduleFileHash": "fourthtestingh",
+  "lockFileVersion": 88aa,
+  "moduleFileHash": "aefwfawefwafawfawfawawfawfwafaw",
   "flags": {
     "cmdRegistries": [
       "https://bcr.bazel.build/"
