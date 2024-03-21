@@ -9410,7 +9410,7 @@
         ]
       },
       "os:osx,arch:x86_64": {
-        "bzlTransitiveDigest": "2BqVchmmIfDKLGP4RNQ5FjsXVNvW2YpXYB8tWr4RVes=",
+        "bzlTransitiveDigest": "pS9mIyvNUVSqdRSfOUDB2R88coUdBuWtJZbYlBr85Dg=",
         "recordedFileInputs": {
           "@@//requirements.txt": "ff12967a755bb8e9b4c92524f6471a99e14c30474a3d428547c55745ec8f23a0"
         },
