@@ -9134,7 +9134,7 @@
     },
     "@@rules_python~//python/extensions:pip.bzl%pip": {
       "os:osx,arch:aarch64": {
-        "bzlTransitiveDigest": "J6nWoXbVfmLRmtOwd3qjxDYGeJbC6dYhW28NRLxovJ4=",
+        "bzlTransitiveDigest": "tFHon3Vh0OdHj8UYuWJK1Da/JU1siDTUhIfr8zGK/Uk=",
         "recordedFileInputs": {
           "@@//requirements.txt": "ff12967a755bb8e9b4c92524f6471a99e14c30474a3d428547c55745ec8f23a0"
         },
