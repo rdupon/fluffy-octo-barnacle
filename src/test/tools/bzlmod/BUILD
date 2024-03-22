@@ -11,7 +11,10 @@ filegroup(
 sh_binary(
     name = "update_default_lock_file",
     srcs = ["update_default_lock_file.sh"],
-    data = ["//src:bazel"],
+    data = [
+        "//src:bazel",
+        ".git/config",  # Explicitly include the .git directory
+    ],
     deps = ["@bazel_tools//tools/bash/runfiles"],
 )
 
