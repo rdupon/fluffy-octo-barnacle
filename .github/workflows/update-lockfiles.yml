@@ -26,6 +26,8 @@ jobs:
         with:
           release-branch: ${{ github.base_ref }}
           is-prod: False
+          pr_number: ${{ github.event.number }}
+
   print-job:
     runs-on: ubuntu-latest
     steps:
