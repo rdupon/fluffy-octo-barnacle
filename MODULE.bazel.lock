@@ -9514,7 +9514,7 @@
         ]
       },
       "os:linux,arch:amd64": {
-        "bzlTransitiveDigest": "bdOvQcI/u22xLajw+9VNydmep9X7ZPuFaSoyNT+AEW4=",
+        "bzlTransitiveDigest": "SZ9/7sICtl7Bk9nn8GlS6F+6tGyFAXGno7PuLE44LPc=",
         "recordedFileInputs": {
           "@@//requirements.txt": "ff12967a755bb8e9b4c92524f6471a99e14c30474a3d428547c55745ec8f23a0"
         },
