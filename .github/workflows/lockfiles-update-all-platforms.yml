@@ -1,13 +1,19 @@
 name: lockfiles-update-all-platforms
 
 on:
-  issue_comment:
-    types: [created, edited]
+  pull_request:
+    types:
+      - labeled
+
 permissions:
   contents: read
 
+env:
+  GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
+
 jobs:
-  hi-test:
+  if: contains(github.event.label.name, 'update-lockfiles-on-all-platforms')
+  update-lockfiles-on-all-platforms:
     runs-on: macos-13
     permissions:
       issues: write
@@ -25,3 +31,15 @@ jobs:
       #   uses: bazelbuild/continuous-integration/actions/release-helper@b9b7f0dad8ab00a48cc262d1d38339a1dd11c7c5 # master
       #   with:
       #     token: ${{ secrets.BAZEL_IO_TOKEN }}
+# on:
+#   pull_request:
+#     types:
+#       - labeled
+
+# env:
+#   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
+
+# jobs:
+#   update-lockfile:
+#     runs-on: ubuntu-latest
+#     if: contains(github.event.label.name, 'updatelock')
