@@ -12,8 +12,8 @@ env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
-  if: contains(github.event.label.name, 'update-lockfiles-on-all-platforms')
-  update-lockfiles-on-all-platforms:
+  update-lockfiles-on-mac-intel:
+    if: contains(github.event.label.name, 'update-lockfiles-on-all-platforms')
     runs-on: macos-13
     steps:
       - name: Harden Runner
@@ -29,6 +29,18 @@ jobs:
       #   uses: bazelbuild/continuous-integration/actions/release-helper@b9b7f0dad8ab00a48cc262d1d38339a1dd11c7c5 # master
       #   with:
       #     token: ${{ secrets.BAZEL_IO_TOKEN }}
+  update-lockfiles-on-linux:
+    needs: [update-lockfiles-on-mac-intel]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@63c24ba6bd7ba022e95695ff85de572c04a18142 # v2.7.0
+        with:
+          egress-policy: audit
+      - name: hihihi
+        run: |
+          echo hello world
+        shell: bash
 # on:
 #   pull_request:
 #     types:
