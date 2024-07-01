@@ -16,6 +16,9 @@ jobs:
         with:
           egress-policy: audit
       - name: commando
+        run: |
+          uname -m
+        shell: bash
 
       # - name: Run helper
       #   uses: bazelbuild/continuous-integration/actions/release-helper@b9b7f0dad8ab00a48cc262d1d38339a1dd11c7c5 # master
