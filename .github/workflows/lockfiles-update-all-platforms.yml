@@ -15,8 +15,6 @@ jobs:
   # if: contains(github.event.label.name, 'update-lockfiles-on-all-platforms')
   update-lockfiles-on-all-platforms:
     runs-on: macos-13
-    permissions:
-      issues: write
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@63c24ba6bd7ba022e95695ff85de572c04a18142 # v2.7.0
