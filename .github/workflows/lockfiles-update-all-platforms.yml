@@ -24,7 +24,7 @@ jobs:
         uses: iancha1992/continuous-integration/actions/all-platform-lockfiles/ubuntu-os@all_platform_update
 
   update-on-mac-intel:
-    needs: [update-lockfiles-on-ubuntu]
+    needs: [update-on-ubuntu]
     runs-on: macos-13
     steps:
       - name: Clone the repo & update the lockfile(s)
