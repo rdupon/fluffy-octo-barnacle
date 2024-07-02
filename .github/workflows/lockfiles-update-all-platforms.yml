@@ -23,6 +23,7 @@ jobs:
       - name: commando
         run: |
           uname -m
+          awefawoefjawoeifjaweoifjawefoijwaefoij
         shell: bash
 
       # - name: Run helper
