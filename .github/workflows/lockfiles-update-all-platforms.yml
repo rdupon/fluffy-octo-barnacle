@@ -27,10 +27,6 @@ jobs:
     needs: [update-lockfiles-on-ubuntu]
     runs-on: macos-13
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@63c24ba6bd7ba022e95695ff85de572c04a18142 # v2.7.0
-        with:
-          egress-policy: audit
       - name: Clone the repo & update the lockfile(s)
         uses: iancha1992/continuous-integration/actions/all-platform-lockfiles@all_platform_update
       # - name: hihihi
