@@ -12,45 +12,28 @@ env:
   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
 
 jobs:
-  update-lockfiles-on-mac-intel:
+  update-on-ubuntu:
     if: contains(github.event.label.name, 'update-lockfiles-on-all-platforms')
-    runs-on: macos-13
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@63c24ba6bd7ba022e95695ff85de572c04a18142 # v2.7.0
-        with:
-          egress-policy: audit
-      - name: commando
-        run: |
-          uname -m
-          awefawoefjawoeifjaweoifjawefoijwaefoij
-        shell: bash
-
-      # - name: Run helper
-      #   uses: bazelbuild/continuous-integration/actions/release-helper@b9b7f0dad8ab00a48cc262d1d38339a1dd11c7c5 # master
-      #   with:
-      #     token: ${{ secrets.BAZEL_IO_TOKEN }}
-  update-lockfiles-on-linux:
-    needs: [update-lockfiles-on-mac-intel]
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@63c24ba6bd7ba022e95695ff85de572c04a18142 # v2.7.0
         with:
           egress-policy: audit
-      - name: hihihi
-        run: |
-          echo hello world
-        shell: bash
-# on:
-#   pull_request:
-#     types:
-#       - labeled
+      - name: Clone the repo & update the lockfile(s)
+        uses: iancha1992/continuous-integration/actions/all-platform-lockfiles@all_platform_update
 
-# env:
-#   GH_TOKEN: ${{ secrets.BAZEL_IO_TOKEN }}
-
-# jobs:
-#   update-lockfile:
-#     runs-on: ubuntu-latest
-#     if: contains(github.event.label.name, 'updatelock')
+  update-on-mac-intel:
+    needs: [update-lockfiles-on-ubuntu]
+    runs-on: macos-13
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@63c24ba6bd7ba022e95695ff85de572c04a18142 # v2.7.0
+        with:
+          egress-policy: audit
+      - name: Clone the repo & update the lockfile(s)
+        uses: iancha1992/continuous-integration/actions/all-platform-lockfiles@all_platform_update
+      # - name: hihihi
+      #   run: |
+      #     uname -m
+      #   shell: bash
