@@ -21,7 +21,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Clone the repo & update the lockfile(s)
-        uses: iancha1992/continuous-integration/actions/all-platform-lockfiles@all_platform_update
+        uses: iancha1992/continuous-integration/actions/all-platform-lockfiles/ubuntu-os@all_platform_update
 
   update-on-mac-intel:
     needs: [update-lockfiles-on-ubuntu]
