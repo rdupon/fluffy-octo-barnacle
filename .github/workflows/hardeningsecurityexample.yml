@@ -3,13 +3,10 @@ on:
   issues:
     types: [opened]
 jobs:
-  
   print_issue_title:
     runs-on: ubuntu-latest
-    name: Print issue title
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6
+      - name: Print issue title
+        uses: iancha1992/continuous-integration/actions/demonstratingsecurity@thisisjusttesting
         with:
-          egress-policy: audit
-      - run: echo "${{github.event.issue.title}}"
+          issue-title: ${{ github.event.issue.title }}
