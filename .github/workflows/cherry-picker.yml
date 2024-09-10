@@ -14,7 +14,7 @@ env:
 
 jobs:
   cherry-picker-on-closed:
-    if: github.event.action == 'closed' && github.event.sender.login == 'copybara-service[bot]'
+    if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
@@ -27,14 +27,14 @@ jobs:
         with:
           triggered-on: closed
           pr-number: ${{ github.event.number }}
-          is-prod: True
+          is-prod: False
       - if: github.event.issue
         name: Run cherrypicker on closed issue
         uses: bazelbuild/continuous-integration/actions/cherry_picker@ee5ea988681e086afabfe6677eef2dc1292f6b9d
         with:
           triggered-on: closed
           pr-number: ${{ github.event.issue.number }}
-          is-prod: True
+          is-prod: False
   cherry-picker-on-milestoned:
     if: github.event.action == 'milestoned'
     runs-on: ubuntu-latest
@@ -51,7 +51,7 @@ jobs:
           pr-number: ${{ github.event.issue.body }}
           milestone-title: ${{ github.event.milestone.title }}
           milestoned-issue-number: ${{ github.event.issue.number }}
-          is-prod: True
+          is-prod: False
       - if: startsWith(github.event.issue.body, '### Commit IDs')
         name: Run cherrypicker on demand
         uses: bazelbuild/continuous-integration/actions/cherry_picker@ee5ea988681e086afabfe6677eef2dc1292f6b9d
@@ -61,4 +61,4 @@ jobs:
           milestoned-issue-number: ${{ github.event.issue.number }}
           issue-title: ${{ github.event.issue.title }}
           issue-body: ${{ github.event.issue.body }}
-          is-prod: True
+          is-prod: False
