@@ -38,6 +38,9 @@ import com.google.devtools.build.lib.bazel.bzlmod.ModuleExtensionRepoMappingEntr
 import com.google.devtools.build.lib.bazel.bzlmod.ModuleFileFunction;
 import com.google.devtools.build.lib.bazel.bzlmod.RegistryFunction;
 import com.google.devtools.build.lib.bazel.bzlmod.RepoSpecFunction;
+import com.google.devtools.build.lib.bazel.bzlmod.SingleExtensionEvalFunction;
+import com.google.devtools.build.lib.bazel.bzlmod.SingleExtensionFunction;
+import com.google.devtools.build.lib.bazel.bzlmod.SingleExtensionUsagesFunction;
 import com.google.devtools.build.lib.bazel.bzlmod.YankedVersionsFunction;
 import com.google.devtools.build.lib.bazel.bzlmod.YankedVersionsUtil;
 import com.google.devtools.build.lib.bazel.repository.RepositoryOptions.BazelCompatibilityMode;
@@ -48,10 +51,12 @@ import com.google.devtools.build.lib.bazel.repository.starlark.StarlarkRepositor
 import com.google.devtools.build.lib.clock.BlazeClock;
 import com.google.devtools.build.lib.cmdline.RepositoryName;
 import com.google.devtools.build.lib.events.StoredEventHandler;
+import com.google.devtools.build.lib.packages.AutoloadSymbols;
 import com.google.devtools.build.lib.packages.PackageFactory;
 import com.google.devtools.build.lib.packages.WorkspaceFileValue;
 import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.pkgcache.PathPackageLocator;
+import com.google.devtools.build.lib.repository.ExternalPackageHelper;
 import com.google.devtools.build.lib.rules.repository.RepositoryDirectoryValue.SuccessfulRepositoryDirectoryValue;
 import com.google.devtools.build.lib.rules.repository.RepositoryFunction.AlreadyReportedRepositoryAccessException;
 import com.google.devtools.build.lib.skyframe.BazelSkyframeExecutorConstants;
@@ -250,6 +255,11 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
                     new RegistryFunction(registryFactory, directories.getWorkspace()))
                 .put(SkyFunctions.REPO_SPEC, new RepoSpecFunction())
                 .put(SkyFunctions.YANKED_VERSIONS, new YankedVersionsFunction())
+                .put(SkyFunctions.SINGLE_EXTENSION, new SingleExtensionFunction())
+                .put(
+                    SkyFunctions.SINGLE_EXTENSION_EVAL,
+                    new SingleExtensionEvalFunction(directories, ImmutableMap::of))
+                .put(SkyFunctions.SINGLE_EXTENSION_USAGES, new SingleExtensionUsagesFunction())
                 .put(
                     SkyFunctions.MODULE_EXTENSION_REPO_MAPPING_ENTRIES,
                     new ModuleExtensionRepoMappingEntriesFunction())
@@ -266,9 +276,11 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
     RepositoryDelegatorFunction.FORCE_FETCH.set(
         differencer, RepositoryDelegatorFunction.FORCE_FETCH_DISABLED);
     PrecomputedValue.PATH_PACKAGE_LOCATOR.set(differencer, pkgLocator.get());
-    PrecomputedValue.STARLARK_SEMANTICS.set(
-        differencer,
-        StarlarkSemantics.builder().setBool(BuildLanguageOptions.ENABLE_BZLMOD, true).build());
+    StarlarkSemantics semantics =
+        StarlarkSemantics.builder().setBool(BuildLanguageOptions.ENABLE_BZLMOD, true).build();
+    PrecomputedValue.STARLARK_SEMANTICS.set(differencer, semantics);
+    PrecomputedValue.AUTOLOAD_SYMBOLS.set(
+        differencer, new AutoloadSymbols(ruleClassProvider, semantics));
     RepositoryDelegatorFunction.RESOLVED_FILE_INSTEAD_OF_WORKSPACE.set(
         differencer, Optional.empty());
     PrecomputedValue.REPO_ENV.set(differencer, ImmutableMap.of());
@@ -361,12 +373,13 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
         "    pass",
         "broken_repo = repository_rule(implementation = _impl)");
     scratch.overwriteFile(
-        rootPath.getRelative("WORKSPACE").getPathString(),
-        "load('repo_rule.bzl', 'broken_repo')",
+        rootPath.getRelative("MODULE.bazel").getPathString(),
+        "broken_repo = use_repo_rule('//:repo_rule.bzl', 'broken_repo')",
         "broken_repo(name = 'broken')");
 
     StoredEventHandler eventHandler = new StoredEventHandler();
-    SkyKey key = RepositoryDirectoryValue.key(RepositoryName.createUnvalidated("broken"));
+    SkyKey key =
+        RepositoryDirectoryValue.key(RepositoryName.createUnvalidated("+_repo_rules+broken"));
     // Make it be evaluated every time, as we are testing evaluation.
     differencer.invalidate(ImmutableSet.of(key));
     EvaluationContext evaluationContext =
@@ -388,7 +401,7 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
   @Test
   public void loadRepositoryNotDefined() throws Exception {
     // WORKSPACE is empty
-    scratch.overwriteFile(rootPath.getRelative("WORKSPACE").getPathString(), "");
+    scratch.overwriteFile(rootPath.getRelative("MODULE.bazel").getPathString(), "");
 
     StoredEventHandler eventHandler = new StoredEventHandler();
     SkyKey key = RepositoryDirectoryValue.key(RepositoryName.createUnvalidated("foo"));
@@ -411,6 +424,9 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
 
   @Test
   public void loadRepositoryFromBzlmod() throws Exception {
+    PrecomputedValue.STARLARK_SEMANTICS.set(
+        differencer,
+        StarlarkSemantics.builder().setBool(BuildLanguageOptions.ENABLE_WORKSPACE, true).build());
     scratch.overwriteFile(
         rootPath.getRelative("MODULE.bazel").getPathString(),
         "module(name='aaa',version='0.1')",
@@ -457,7 +473,6 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
 
   @Test
   public void loadInvisibleRepository() throws Exception {
-
     StoredEventHandler eventHandler = new StoredEventHandler();
     SkyKey key =
         RepositoryDirectoryValue.key(
@@ -477,11 +492,14 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
     assertThat(repositoryDirectoryValue.repositoryExists()).isFalse();
     assertThat(repositoryDirectoryValue.getErrorMsg())
         .contains("No repository visible as '@foo' from repository '@@fake_owner_repo'");
+    assertThat(repositoryDirectoryValue.getErrorMsg())
+        .doesNotContain(ExternalPackageHelper.WORKSPACE_DEPRECATION);
   }
 
   @Test
   public void loadInvisibleRepositoryFromMain() throws Exception {
-
+    // Create the WORKSPACE file to trigger error message for WORKSPACE deprecation.
+    scratch.file(rootPath.getRelative("WORKSPACE").getPathString());
     StoredEventHandler eventHandler = new StoredEventHandler();
     SkyKey key =
         RepositoryDirectoryValue.key(
@@ -500,6 +518,8 @@ public class RepositoryDelegatorTest extends FoundationTestCase {
     assertThat(repositoryDirectoryValue.repositoryExists()).isFalse();
     assertThat(repositoryDirectoryValue.getErrorMsg())
         .contains("No repository visible as '@foo' from main repository");
+    assertThat(repositoryDirectoryValue.getErrorMsg())
+        .contains(ExternalPackageHelper.WORKSPACE_DEPRECATION);
   }
 
   private void loadRepo(String strippedRepoName) throws InterruptedException {

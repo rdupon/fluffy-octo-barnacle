@@ -217,9 +217,8 @@ A dictionary of the attributes this macro supports, analogous to <a href="#rule.
 </code> (see the <a href=\"../toplevel/attr.html\">attr</a> module).
 
 <p>The special <code>name</code> attribute is predeclared and must not be included in the
-dictionary. There are also reserved attribute names that must not be included:
-<code>visibility</code>, <code>deprecation</code>, <code>tags</code>, <code>testonly</code>, and
-<code>features</code>.
+dictionary. The <code>visibility</code> attribute name is reserved and must not be included in the
+dictionary.
 
 <p>Attributes whose names start with <code>_</code> are private -- they cannot be passed at the call
 site of the rule. Such attributes can be assigned a default value (as in
@@ -227,12 +226,19 @@ site of the rule. Such attributes can be assigned a default value (as in
 
 <p>Certain APIs are not available within symbolic macros. These include:
 <ul>
-  <li>package(), licenses()
-  <li>environment_group()
-  <li>glob(), subpackages()
-  <li>existing_rules(), existing_rule(),
-  <li>(for WORKSPACE threads) workspace(), register_toolchains(),
-      register_execution_platforms(), bind(), repository rule instantiation
+  <li><a href="/reference/be/functions#package"><code>package()</code>, <code>licenses()</code>
+  <li><code>environment_group()</code>
+  <li><a href="../toplevel/native#glob"><code>native.glob()</code></a> - instead, you may pass a
+    glob into the macro via a label list attribute
+  <li><a href="../toplevel/native#subpackages"><code>native.subpackages()</code></a>
+  <li>(allowed in rule finalizers only)
+    <a href="../toplevel/native#existing_rules"><code>native.existing_rules()</code></a>,
+    <a href="../toplevel/native#existing_rule"><code>native.existing_rule()</code></a>
+  <li>(for <code>WORKSPACE</code> threads)
+    <a href="../globals/workspace#workspace"><code>workspace()</code></a>,
+    <a href="../globals/workspace#register_toolchains"><code>register_toolchains()</code></a>,
+    <a href="../globals/workspace#register_execution_platforms><code>register_execution_platforms()</code></a>,
+    <a href="../globals/workspace#bind"><code>bind()</code></a>, repository rule instantiation
 </ul>
 
 <p>To limit memory usage, there is a cap on the number of attributes that may be declared.
@@ -241,6 +247,27 @@ site of the rule. Such attributes can be assigned a default value (as in
         // list of disallowed APIs to there.
         // TODO: #19922 - Make good on the above threat of enforcing a cap on the number of
         // attributes.
+        // TODO: #19922 - Add a mechanism to optionally automatically pre-populate attrs with
+        // common build rule attributes ("tags", "testonly", etc.), or to inherit the list of
+        // attributes of a given rule class.
+        @Param(
+            name = "finalizer",
+            positional = false,
+            named = true,
+            defaultValue = "False",
+            doc =
+                """
+Whether this macro is a rule finalizer, which is a macro that, regardless of its position in a
+<code>BUILD</code> file, is evaluated at the end of package loading, after all non-finalizer targets
+have been defined.
+
+<p>Unlike ordinary symbolic macros, rule finalizers may call
+<a href="../toplevel/native#existing_rule"><code>native.existing_rule()</code></a> and
+<a href="../toplevel/native#existing_rules"><code>native.existing_rules()</code></a> to query the
+set of <em>non-finalizer</em> rule targets defined in the current package. Note that
+<code>native.existing_rule()</code> and <code>native.existing_rules()</code> cannot access the
+targets defined by any rule finalizer, including this one.
+"""),
         @Param(
             name = "doc",
             positional = false,
@@ -256,7 +283,11 @@ site of the rule. Such attributes can be assigned a default value (as in
       },
       useStarlarkThread = true)
   StarlarkCallable macro(
-      StarlarkFunction implementation, Dict<?, ?> attrs, Object doc, StarlarkThread thread)
+      StarlarkFunction implementation,
+      Dict<?, ?> attrs,
+      boolean finalizer,
+      Object doc,
+      StarlarkThread thread)
       throws EvalException;
 
   @StarlarkMethod(
@@ -653,7 +684,7 @@ site of the rule. Such attributes can be assigned a default value (as in
             named = true,
             defaultValue = "[]",
             doc =
-                "Experimental: List of toolchain types. The aspect propagates to target"
+                "List of toolchain types. The aspect propagates to target"
                     + " toolchains which match these toolchain types."),
         @Param(
             name = "attrs",

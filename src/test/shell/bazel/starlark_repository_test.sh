@@ -2864,6 +2864,46 @@ EOF
   expect_log "I see: something"
 }
 
+function test_bad_marker_file_ignored() {
+  # when reading a file in another repo, we should watch it.
+  local outside_dir="${TEST_TMPDIR}/outside_dir"
+  mkdir -p "${outside_dir}"
+  echo nothing > ${outside_dir}/data.txt
+
+  create_new_workspace
+  cat > $(setup_module_dot_bazel) <<EOF
+foo = use_repo_rule("//:r.bzl", "foo")
+foo(name = "foo")
+bar = use_repo_rule("//:r.bzl", "bar")
+bar(name = "bar", data = "nothing")
+EOF
+  touch BUILD
+  cat > r.bzl <<EOF
+def _foo(rctx):
+  rctx.file("BUILD", "filegroup(name='foo')")
+  # intentionally grab a file that's not directly addressable by a label
+  otherfile = rctx.path(Label("@bar//subpkg:BUILD")).dirname.dirname.get_child("data.txt")
+  print("I see: " + rctx.read(otherfile))
+foo=repository_rule(_foo)
+def _bar(rctx):
+  rctx.file("subpkg/BUILD")
+  rctx.file("data.txt", rctx.attr.data)
+bar=repository_rule(_bar, attrs={"data":attr.string()})
+EOF
+
+  bazel build @foo >& $TEST_log || fail "expected bazel to succeed"
+  expect_log "I see: nothing"
+
+  local marker_file=$(bazel info output_base)/external/@+_repo_rules+foo.marker
+  # the marker file for this repo should contain a reference to "@@+_repo_rules+bar". Mangle that.
+  sed -i'' -e 's/@@+_repo_rules+bar/@@LOL@@LOL/g' ${marker_file}
+
+  # Running Bazel again shouldn't crash, and should result in a refetch.
+  bazel shutdown
+  bazel build @foo >& $TEST_log || fail "expected bazel to succeed"
+  expect_log "I see: nothing"
+}
+
 function test_file_watching_in_undefined_repo() {
   create_new_workspace
   cat > $(setup_module_dot_bazel) <<EOF
@@ -3267,8 +3307,7 @@ EOF
   # now build both //blarg and @r. The latter depends on the former, which is in error.
   # with --keep_going, this could result in a deadlock.
   bazel build --keep_going //blarg @r >& $TEST_log && fail "bazel somehow succeeded"
-  # the fact that the invocation didn't time out should suffice as success.
-  true
+  expect_log "no such package 'blarg': Symlink cycle detected while trying to find BUILD file"
 }
 
 function test_legacy_label_print() {

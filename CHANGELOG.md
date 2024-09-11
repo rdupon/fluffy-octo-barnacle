@@ -1,3 +1,110 @@
+## Release 8.0.0-pre.20240826.1 (2024-09-06)
+
+```
+Baseline: 39481ad142469d3ed16d283694c76091b271d523
+```
+
+Important changes:
+
+  - Repository rules instantiated in the same module extensions can
+    now refer to each other by their extension-specified names in
+    label attributes.
+
+This release contains contributions from many people at Google, as well as Alessandro Patti, Cornelius Riemenschneider, dependabot[bot], Fabian Meumertzheim, George Gensure, Jay Conrod, Keith Smiley, Michael Siegrist, Xdng Yng, xinyu.wang.
+
+## Release 8.0.0-pre.20240821.2 (2024-08-27)
+
+```
+Baseline: 04f0ef76938057f143562e9faeb2f47defa30939
+
+Cherry picks:
+
+   + 0000000000000000000000000000000000000000:
+     
+```
+
+This release contains contributions from many people at Google, as well as Fabian Meumertzheim.
+
+## Release 8.0.0-pre.20240819.2 (2024-08-22)
+
+```
+Baseline: ffdf41acfd4d82bdfd3f855b8f4aa3840d918eba
+
+Cherry picks:
+
+   + 0000000000000000000000000000000000000000:
+     
+```
+
+This release contains contributions from many people at Google, as well as dependabot[bot], Fabian Meumertzheim, Jordan Mele, Jordan Mele.
+
+## Release 8.0.0-pre.20240814.2 (2024-08-20)
+
+```
+Baseline: 9d86712432fa7c6276ad5620a3185557631f36f1
+
+Cherry picks:
+
+   + 0000000000000000000000000000000000000000:
+     
+```
+
+Important changes:
+
+  - Deleted native Android mobile-install
+
+This release contains contributions from many people at Google, as well as Fabian Meumertzheim, Javier Maestro.
+
+## Release 7.3.1 (2024-08-19)
+
+```
+
+Release Notes:
+
+```
+
+## Release 8.0.0-pre.20240812.1 (2024-08-15)
+
+```
+Baseline: 133eb60925496e3153bcc7903968b4eeb6d16068
+```
+
+New features:
+
+  - aspects can now return DefaultInfo, which will then be merged
+    with that of the configured target they are applied to.
+    Currently, only the files= field is supported.
+
+Important changes:
+
+  - BEP will include correct \`TestResult\` and \`TargetSummary\`
+    events when special test inputs like \`$test_runtime\` fail to
+    build.
+  - Improve progress message in case there are no actions in flight,
+    and display explicitly "no actions running" in that case.
+  - The new `cc_static_library` rule produces a static library that
+    bundles given targets and all their transitive dependencies. It
+    has to be enabled via `--experimental_cc_static_library`.
+
+This release contains contributions from many people at Google, as well as Fabian Meumertzheim, FaBrand, Jiawen (Kevin) Chen, Son Luong Ngoc, Victor Hiairrassary.
+
+## Release 8.0.0-pre.20240807.1 (2024-08-13)
+
+```
+Baseline: 300c5867b7d2da1ba32abc20e95662096c2a7a08
+```
+
+Important changes:
+
+  - Bazel no longer has the android_ndk_repository rule. Use
+    https://github.com/bazelbuild/rules_android_ndk instead. See
+    https://github.com/bazelbuild/bazel/issues/23199
+  - Bazel no longer has the android_local_test rule. Use
+    https://github.com/bazelbuild/rules_android instead. See
+    https://github.com/bazelbuild/bazel/issues/23199
+
+This release contains contributions from many people at Google, as well as Fabian Meumertzheim, JKutscha, Xdng Yng.
+
 ## Release 7.3.0 (2024-08-12)
 
 ```

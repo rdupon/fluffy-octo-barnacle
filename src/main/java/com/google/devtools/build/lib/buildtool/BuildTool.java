@@ -14,6 +14,9 @@
 package com.google.devtools.build.lib.buildtool;
 
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
+import static com.google.devtools.build.lib.buildtool.AnalysisPhaseRunner.evaluateProjectFile;
+import static com.google.devtools.build.lib.skyframe.serialization.analysis.RemoteAnalysisCachingOptions.RemoteAnalysisCacheMode.UPLOAD;
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.joining;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -30,6 +33,7 @@ import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Multimaps;
 import com.google.common.flogger.GoogleLogger;
 import com.google.devtools.build.lib.actions.BuildFailedException;
+import com.google.devtools.build.lib.actions.CommandLineExpansionException;
 import com.google.devtools.build.lib.actions.TestExecException;
 import com.google.devtools.build.lib.analysis.AnalysisAndExecutionResult;
 import com.google.devtools.build.lib.analysis.AnalysisResult;
@@ -37,18 +41,20 @@ import com.google.devtools.build.lib.analysis.ConfiguredTarget;
 import com.google.devtools.build.lib.analysis.Project;
 import com.google.devtools.build.lib.analysis.Project.ProjectParseException;
 import com.google.devtools.build.lib.analysis.ViewCreationFailedException;
+import com.google.devtools.build.lib.analysis.actions.TemplateExpansionException;
 import com.google.devtools.build.lib.analysis.config.BuildOptions;
-import com.google.devtools.build.lib.analysis.config.CoreOptions;
 import com.google.devtools.build.lib.analysis.config.InvalidConfigurationException;
 import com.google.devtools.build.lib.buildeventstream.BuildEvent.LocalFile.LocalFileType;
 import com.google.devtools.build.lib.buildeventstream.BuildEventArtifactUploader.UploadContext;
 import com.google.devtools.build.lib.buildeventstream.BuildEventIdUtil;
 import com.google.devtools.build.lib.buildeventstream.BuildEventProtocolOptions;
+import com.google.devtools.build.lib.buildtool.AnalysisPhaseRunner.ProjectEvaluationResult;
 import com.google.devtools.build.lib.buildtool.SkyframeMemoryDumper.DisplayMode;
 import com.google.devtools.build.lib.buildtool.buildevent.BuildCompleteEvent;
 import com.google.devtools.build.lib.buildtool.buildevent.BuildInterruptedEvent;
 import com.google.devtools.build.lib.buildtool.buildevent.BuildStartingEvent;
 import com.google.devtools.build.lib.buildtool.buildevent.NoExecutionEvent;
+import com.google.devtools.build.lib.buildtool.buildevent.StartingAqueryDumpAfterBuildEvent;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.TargetParsingException;
 import com.google.devtools.build.lib.collect.PathFragmentPrefixTrie;
@@ -57,10 +63,12 @@ import com.google.devtools.build.lib.events.ExtendedEventHandler;
 import com.google.devtools.build.lib.events.OutputFilter;
 import com.google.devtools.build.lib.events.Reporter;
 import com.google.devtools.build.lib.exec.ExecutionOptions;
+import com.google.devtools.build.lib.packages.Target;
 import com.google.devtools.build.lib.pkgcache.LoadingFailedException;
 import com.google.devtools.build.lib.profiler.ProfilePhase;
 import com.google.devtools.build.lib.profiler.Profiler;
 import com.google.devtools.build.lib.profiler.SilentCloseable;
+import com.google.devtools.build.lib.query2.aquery.ActionGraphProtoOutputFormatterCallback;
 import com.google.devtools.build.lib.runtime.BlazeRuntime;
 import com.google.devtools.build.lib.runtime.CommandEnvironment;
 import com.google.devtools.build.lib.server.FailureDetails.ActionQuery;
@@ -73,20 +81,29 @@ import com.google.devtools.build.lib.skyframe.SequencedSkyframeExecutor;
 import com.google.devtools.build.lib.skyframe.SkyframeBuildView.BuildDriverKeyTestContext;
 import com.google.devtools.build.lib.skyframe.SkyframeExecutor;
 import com.google.devtools.build.lib.skyframe.TargetPatternPhaseValue;
+import com.google.devtools.build.lib.skyframe.actiongraph.v2.ActionGraphDump;
+import com.google.devtools.build.lib.skyframe.actiongraph.v2.AqueryOutputHandler;
+import com.google.devtools.build.lib.skyframe.actiongraph.v2.AqueryOutputHandler.OutputType;
+import com.google.devtools.build.lib.skyframe.actiongraph.v2.InvalidAqueryOutputFormatException;
 import com.google.devtools.build.lib.skyframe.config.FlagSetValue;
+import com.google.devtools.build.lib.skyframe.serialization.analysis.FrontierSerializer;
+import com.google.devtools.build.lib.skyframe.serialization.analysis.RemoteAnalysisCachingOptions;
 import com.google.devtools.build.lib.util.AbruptExitException;
 import com.google.devtools.build.lib.util.CrashFailureDetails;
 import com.google.devtools.build.lib.util.DetailedExitCode;
 import com.google.devtools.build.lib.util.ExitCode;
 import com.google.devtools.build.lib.util.InterruptedFailureDetails;
 import com.google.devtools.build.lib.vfs.Path;
+import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.devtools.build.skyframe.EvaluationResult;
 import com.google.devtools.build.skyframe.SkyValue;
 import com.google.devtools.common.options.RegexPatternOption;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.Collection;
+import java.util.Optional;
 import javax.annotation.Nullable;
 
 /**
@@ -193,14 +210,37 @@ public class BuildTool {
 
       initializeOutputFilter(request);
 
+      // --------------------------------
+      // Target pattern evaluation phase.
+      // --------------------------------
+
+      TargetPatternPhaseValue targetPatternPhaseValue;
+      Profiler.instance().markPhase(ProfilePhase.TARGET_PATTERN_EVAL);
+      try (SilentCloseable c = Profiler.instance().profile("evaluateTargetPatterns")) {
+        targetPatternPhaseValue = evaluateTargetPatterns(env, request, validator);
+      }
+      env.setWorkspaceName(targetPatternPhaseValue.getWorkspaceName());
+
+      // ------------------------------------
+      // Analysis/Execution phases (Skymeld).
+      // ------------------------------------
+      //
+      // TODO: b/365667094: consider converging Skymeld and non-Skymeld code path as much as
+      // possible, so that it's simpler to incorporate features common to both paths without
+      // threading too much state into the respective analysis runners.
       if (env.withMergedAnalysisAndExecutionSourceOfTruth()) {
         // Skymeld is useful only for commands that perform execution.
-        buildTargetsWithMergedAnalysisExecution(request, result, validator, buildOptions);
+        buildTargetsWithMergedAnalysisExecution(
+            request, result, targetPatternPhaseValue, buildOptions);
         return;
       }
 
+      // -----------------------------
+      // Analysis phase (non-Skymeld).
+      // -----------------------------
+
       AnalysisResult analysisResult =
-          AnalysisPhaseRunner.execute(env, request, buildOptions, validator);
+          AnalysisPhaseRunner.execute(env, request, targetPatternPhaseValue, buildOptions);
 
       // We cannot move the executionTool down to the execution phase part since it does set up the
       // symlinks for tools.
@@ -236,7 +276,9 @@ public class BuildTool {
           analysisPostProcessor.process(request, env, runtime, analysisResult);
         }
 
-        // Execution phase.
+        // ------------------------------
+        // Execution phase (non-Skymeld).
+        // ------------------------------
         if (needsExecutionPhase(request.getBuildOptions())) {
           try (SilentCloseable closeable = Profiler.instance().profile("ExecutionTool.init")) {
             executionTool.init();
@@ -254,6 +296,33 @@ public class BuildTool {
         if (delayedFailureDetail != null) {
           throw new BuildFailedException(
               delayedFailureDetail.getMessage(), DetailedExitCode.of(delayedFailureDetail));
+        }
+
+        // Only run these post-build steps for builds with SequencedSkyframeExecutor.
+        if (env.getSkyframeExecutor() instanceof SequencedSkyframeExecutor) {
+          try (SilentCloseable closeable =
+              Profiler.instance().profile("serializeAndUploadFrontier")) {
+            // TODO: b/365667094 - deduplicate Skymeld and non-Skymeld paths.
+            serializeFrontier(
+                request.getOptions(RemoteAnalysisCachingOptions.class),
+                analysisResult.getActiveDirectoriesMatcher());
+          }
+
+          if (request.getBuildOptions().aqueryDumpAfterBuildFormat != null) {
+            try (SilentCloseable c = Profiler.instance().profile("postExecutionDumpSkyframe")) {
+              dumpSkyframeStateAfterBuild(
+                  request.getOptions(BuildEventProtocolOptions.class),
+                  request.getBuildOptions().aqueryDumpAfterBuildFormat,
+                  request.getBuildOptions().aqueryDumpAfterBuildOutputFile);
+            } catch (CommandLineExpansionException | IOException | TemplateExpansionException e) {
+              throw new PostExecutionDumpException(e);
+            } catch (InvalidAqueryOutputFormatException e) {
+              throw new PostExecutionDumpException(
+                  "--skyframe_state must be used with "
+                      + "--output=proto|streamed_proto|textproto|jsonproto.",
+                  e);
+            }
+          }
         }
       }
     } catch (Error | RuntimeException e) {
@@ -303,14 +372,35 @@ public class BuildTool {
     }
   }
 
+  private static TargetPatternPhaseValue evaluateTargetPatterns(
+      CommandEnvironment env, final BuildRequest request, final TargetValidator validator)
+      throws LoadingFailedException, TargetParsingException, InterruptedException {
+    boolean keepGoing = request.getKeepGoing();
+    TargetPatternPhaseValue result =
+        env.getSkyframeExecutor()
+            .loadTargetPatternsWithFilters(
+                env.getReporter(),
+                request.getTargets(),
+                env.getRelativeWorkingDirectory(),
+                request.getLoadingOptions(),
+                request.getLoadingPhaseThreadCount(),
+                keepGoing,
+                request.shouldRunTests());
+    if (validator != null) {
+      ImmutableSet<Target> targets =
+          result.getTargets(env.getReporter(), env.getSkyframeExecutor().getPackageManager());
+      validator.validateTargets(targets, keepGoing);
+    }
+    return result;
+  }
+
   /** Performs the merged analysis and execution phase. */
   private void buildTargetsWithMergedAnalysisExecution(
       BuildRequest request,
       BuildResult result,
-      TargetValidator validator,
+      TargetPatternPhaseValue targetPatternPhaseValue,
       BuildOptions buildOptionsBeforeFlagSets)
       throws InterruptedException,
-          TargetParsingException,
           LoadingFailedException,
           AbruptExitException,
           ViewCreationFailedException,
@@ -318,34 +408,8 @@ public class BuildTool {
           TestExecException,
           InvalidConfigurationException,
           RepositoryMappingResolutionException {
-    // Target pattern evaluation.
-    TargetPatternPhaseValue loadingResult;
-    Profiler.instance().markPhase(ProfilePhase.TARGET_PATTERN_EVAL);
-    try (SilentCloseable c = Profiler.instance().profile("evaluateTargetPatterns")) {
-      loadingResult =
-          AnalysisAndExecutionPhaseRunner.evaluateTargetPatterns(env, request, validator);
-    }
-    env.setWorkspaceName(loadingResult.getWorkspaceName());
-
-    BuildOptions postFlagSetsBuildOptions;
-    String sclConfig = buildOptionsBeforeFlagSets.get(CoreOptions.class).sclConfig;
-    if (sclConfig != null && !sclConfig.isEmpty()) {
-      Label projectFile =
-          getProjectFile(loadingResult.getTargetLabels(), env.getSkyframeExecutor(), getReporter());
-      if (projectFile != null) {
-        postFlagSetsBuildOptions =
-            applySclConfigs(
-                buildOptionsBeforeFlagSets,
-                projectFile,
-                request.getBuildOptions().enforceProjectConfigs,
-                env.getSkyframeExecutor(),
-                getReporter());
-      } else {
-        postFlagSetsBuildOptions = buildOptionsBeforeFlagSets;
-      }
-    } else {
-      postFlagSetsBuildOptions = buildOptionsBeforeFlagSets;
-    }
+    ProjectEvaluationResult projectEvaluationResult =
+        evaluateProjectFile(request, buildOptionsBeforeFlagSets, targetPatternPhaseValue, env);
 
     // See https://github.com/bazelbuild/rules_nodejs/issues/3693.
     env.getSkyframeExecutor().clearSyscallCache();
@@ -364,8 +428,8 @@ public class BuildTool {
           AnalysisAndExecutionPhaseRunner.execute(
               env,
               request,
-              postFlagSetsBuildOptions,
-              loadingResult,
+              projectEvaluationResult.buildOptions(),
+              targetPatternPhaseValue,
               () -> executionTool.prepareForExecution(executionTimer),
               result::setBuildConfiguration,
               new BuildDriverKeyTestContext() {
@@ -385,12 +449,20 @@ public class BuildTool {
                       .getTestActionContext()
                       .forceExclusiveIfLocalTestsInParallel();
                 }
-              });
+              },
+              projectEvaluationResult.activeDirectoriesMatcher());
       buildCompleted = true;
 
       // This value is null when there's no analysis.
       if (analysisAndExecutionResult == null) {
         return;
+      }
+
+      try (SilentCloseable closeable = Profiler.instance().profile("serializeAndUploadFrontier")) {
+        // TODO: b/365667094 - deduplicate Skymeld and non-Skymeld paths.
+        serializeFrontier(
+            request.getOptions(RemoteAnalysisCachingOptions.class),
+            analysisAndExecutionResult.getActiveDirectoriesMatcher());
       }
     } catch (InvalidConfigurationException
         | RepositoryMappingResolutionException
@@ -505,6 +577,92 @@ public class BuildTool {
     } catch (IOException | SkyframeMemoryDumper.DumpFailedException e) {
       throw new PostExecutionDumpException("cannot write Skyframe dump: " + e.getMessage(), e);
     }
+  }
+
+  /**
+   * Produces an aquery dump of the state of Skyframe.
+   *
+   * <p>There are 2 possible output channels: a local file or a remote FS.
+   */
+  private void dumpSkyframeStateAfterBuild(
+      @Nullable BuildEventProtocolOptions besOptions,
+      String format,
+      @Nullable PathFragment outputFilePathFragment)
+      throws CommandLineExpansionException, IOException, InvalidAqueryOutputFormatException,
+          TemplateExpansionException {
+    Preconditions.checkState(env.getSkyframeExecutor() instanceof SequencedSkyframeExecutor);
+
+    UploadContext streamingContext = null;
+    Path localOutputFilePath = null;
+    String outputFileName;
+
+    if (outputFilePathFragment == null) {
+      outputFileName = getDefaultOutputFileName(format);
+      if (besOptions != null && besOptions.streamingLogFileUploads) {
+        streamingContext =
+            runtime
+                .getBuildEventArtifactUploaderFactoryMap()
+                .select(besOptions.buildEventUploadStrategy)
+                .create(env)
+                .startUpload(LocalFileType.PERFORMANCE_LOG, /* inputSupplier= */ null);
+      } else {
+        localOutputFilePath = env.getOutputBase().getRelative(outputFileName);
+      }
+    } else {
+      localOutputFilePath = env.getOutputBase().getRelative(outputFilePathFragment);
+      outputFileName = localOutputFilePath.getBaseName();
+    }
+
+    if (localOutputFilePath != null) {
+      getReporter().handle(Event.info("Writing aquery dump to " + localOutputFilePath));
+      getReporter()
+          .post(new StartingAqueryDumpAfterBuildEvent(localOutputFilePath, outputFileName));
+    } else {
+      getReporter().handle(Event.info("Streaming aquery dump."));
+      getReporter().post(new StartingAqueryDumpAfterBuildEvent(streamingContext, outputFileName));
+    }
+
+    try (OutputStream outputStream = initOutputStream(streamingContext, localOutputFilePath);
+        PrintStream printStream = new PrintStream(outputStream);
+        AqueryOutputHandler aqueryOutputHandler =
+            ActionGraphProtoOutputFormatterCallback.constructAqueryOutputHandler(
+                OutputType.fromString(format), outputStream, printStream)) {
+      // These options are fixed for simplicity. We'll add more configurability if the need arises.
+      ActionGraphDump actionGraphDump =
+          new ActionGraphDump(
+              /* includeActionCmdLine= */ false,
+              /* includeArtifacts= */ true,
+              /* includePrunedInputs= */ true,
+              /* actionFilters= */ null,
+              /* includeParamFiles= */ false,
+              /* includeFileWriteContents= */ false,
+              aqueryOutputHandler,
+              getReporter());
+      AqueryProcessor.dumpActionGraph(env, aqueryOutputHandler, actionGraphDump);
+    }
+  }
+
+  private static String getDefaultOutputFileName(String format) {
+    switch (format) {
+      case "proto":
+        return "aquery_dump.proto";
+      case "streamed_proto":
+        return "aquery_dump.pb";
+      case "textproto":
+        return "aquery_dump.textproto";
+      case "jsonproto":
+        return "aquery_dump.json";
+      default:
+        throw new IllegalArgumentException("Unsupported format type: " + format);
+    }
+  }
+
+  private static OutputStream initOutputStream(
+      @Nullable UploadContext streamingContext, Path outputFilePath) throws IOException {
+    if (streamingContext != null) {
+      return new BufferedOutputStream(streamingContext.getOutputStream());
+    }
+    return new BufferedOutputStream(outputFilePath.getOutputStream());
   }
 
   private void reportExceptionError(Exception e) {
@@ -657,6 +815,34 @@ public class BuildTool {
     }
 
     return result;
+  }
+
+  private void serializeFrontier(
+      @Nullable RemoteAnalysisCachingOptions options,
+      Optional<PathFragmentPrefixTrie> activeDirectoriesMatcher)
+      throws InterruptedException, AbruptExitException {
+    if (options == null || options.mode != UPLOAD) {
+      return;
+    }
+
+    // TODO: b/353233779 - consider falling back on full serialization when there is
+    // no project matcher.
+    Preconditions.checkState(
+        activeDirectoriesMatcher.isPresent(),
+        "the PROJECT.scl active_directories matcher is missing, was it initialized correctly?");
+
+    Optional<FailureDetail> maybeFailureDetail =
+        FrontierSerializer.serializeAndUploadFrontier(
+            requireNonNull(env.getAnalysisObjectCodecsSupplier()),
+            env.getSkyframeExecutor(),
+            activeDirectoriesMatcher.get(),
+            requireNonNull(env.getFingerprintValueService()),
+            env.getReporter(),
+            env.getEventBus(),
+            options.serializedFrontierProfile);
+    if (maybeFailureDetail.isPresent()) {
+      throw new AbruptExitException(DetailedExitCode.of(maybeFailureDetail.get()));
+    }
   }
 
   private static void maybeSetStopOnFirstFailure(BuildRequest request, BuildResult result) {

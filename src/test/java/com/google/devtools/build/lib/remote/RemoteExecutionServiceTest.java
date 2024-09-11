@@ -21,6 +21,7 @@ import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.google.devtools.build.lib.actions.ExecutionRequirements.REMOTE_EXECUTION_INLINE_OUTPUTS;
 import static com.google.devtools.build.lib.remote.util.DigestUtil.toBinaryDigest;
 import static com.google.devtools.build.lib.remote.util.Utils.getFromFuture;
+import static com.google.devtools.build.lib.util.StringUtil.reencodeExternalToInternal;
 import static com.google.devtools.build.lib.vfs.FileSystemUtils.readContent;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
@@ -34,7 +35,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import build.bazel.remote.execution.v2.ActionResult;
-import build.bazel.remote.execution.v2.CacheCapabilities;
 import build.bazel.remote.execution.v2.Digest;
 import build.bazel.remote.execution.v2.Directory;
 import build.bazel.remote.execution.v2.DirectoryNode;
@@ -46,7 +46,6 @@ import build.bazel.remote.execution.v2.OutputFile;
 import build.bazel.remote.execution.v2.OutputSymlink;
 import build.bazel.remote.execution.v2.Platform;
 import build.bazel.remote.execution.v2.RequestMetadata;
-import build.bazel.remote.execution.v2.SymlinkAbsolutePathStrategy;
 import build.bazel.remote.execution.v2.SymlinkNode;
 import build.bazel.remote.execution.v2.Tree;
 import com.google.common.base.Throwables;
@@ -54,6 +53,7 @@ import com.google.common.collect.ImmutableClassToInstanceMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.google.common.eventbus.EventBus;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.SettableFuture;
@@ -343,15 +343,15 @@ public class RemoteExecutionServiceTest {
   }
 
   @Test
-  public void downloadOutputs_siblingLayoutAndRelativeToInputRoot_works() throws Exception {
+  public void downloadOutputs_siblingLayout() throws Exception {
     // arrange
-    remotePathResolver = new SiblingRepositoryLayoutResolver(execRoot, true);
+    remotePathResolver = new SiblingRepositoryLayoutResolver(execRoot);
 
     Digest fooDigest = cache.addContents(remoteActionExecutionContext, "foo-contents");
     Digest barDigest = cache.addContents(remoteActionExecutionContext, "bar-contents");
     ActionResult.Builder builder = ActionResult.newBuilder();
-    builder.addOutputFilesBuilder().setPath("execroot/outputs/foo").setDigest(fooDigest);
-    builder.addOutputFilesBuilder().setPath("execroot/outputs/bar").setDigest(barDigest);
+    builder.addOutputFilesBuilder().setPath("outputs/foo").setDigest(fooDigest);
+    builder.addOutputFilesBuilder().setPath("outputs/bar").setDigest(barDigest);
     RemoteActionResult result =
         RemoteActionResult.createFromCache(CachedActionResult.remote(builder.build()));
     Spawn spawn = newSpawnFromResult(result);
@@ -1546,7 +1546,7 @@ public class RemoteExecutionServiceTest {
     ImmutableSet.Builder<Artifact> outputs = ImmutableSet.builder();
     ImmutableList<String> expectedOutputFiles = ImmutableList.of("outputs/foo", "outputs/bar");
     for (String outputFile : expectedOutputFiles) {
-      Path path = remotePathResolver.outputPathToLocalPath(outputFile);
+      Path path = remotePathResolver.outputPathToLocalPath(reencodeExternalToInternal(outputFile));
       Artifact output = ActionsTestUtil.createArtifact(artifactRoot, path);
       outputs.add(output);
     }
@@ -1649,7 +1649,7 @@ public class RemoteExecutionServiceTest {
 
     // act
     UploadManifest manifest = service.buildUploadManifest(action, spawnResult);
-    service.uploadOutputs(action, spawnResult, () -> {});
+    uploadOutputsAndWait(service, action, spawnResult);
 
     // assert
     ActionResult.Builder expectedResult = ActionResult.newBuilder();
@@ -1696,7 +1696,7 @@ public class RemoteExecutionServiceTest {
 
     // act
     UploadManifest manifest = service.buildUploadManifest(action, spawnResult);
-    service.uploadOutputs(action, spawnResult, () -> {});
+    uploadOutputsAndWait(service, action, spawnResult);
 
     // assert
     ActionResult.Builder expectedResult = ActionResult.newBuilder();
@@ -1770,7 +1770,7 @@ public class RemoteExecutionServiceTest {
 
     // act
     UploadManifest manifest = service.buildUploadManifest(action, spawnResult);
-    service.uploadOutputs(action, spawnResult, () -> {});
+    uploadOutputsAndWait(service, action, spawnResult);
 
     // assert
     ActionResult.Builder expectedResult = ActionResult.newBuilder();
@@ -1806,7 +1806,7 @@ public class RemoteExecutionServiceTest {
 
     // act
     UploadManifest manifest = service.buildUploadManifest(action, spawnResult);
-    service.uploadOutputs(action, spawnResult, () -> {});
+    uploadOutputsAndWait(service, action, spawnResult);
 
     // assert
     ActionResult.Builder expectedResult = ActionResult.newBuilder();
@@ -1828,12 +1828,6 @@ public class RemoteExecutionServiceTest {
 
   @Test
   public void uploadOutputs_uploadAbsoluteDanglingSymlink() throws Exception {
-    when(cache.getCacheCapabilities())
-        .thenReturn(
-            CacheCapabilities.newBuilder()
-                .setSymlinkAbsolutePathStrategy(SymlinkAbsolutePathStrategy.Value.ALLOWED)
-                .build());
-
     doUploadDanglingSymlink(PathFragment.create("/some/path"));
   }
 
@@ -1858,7 +1852,7 @@ public class RemoteExecutionServiceTest {
             .build();
 
     // act
-    service.uploadOutputs(action, spawnResult, () -> {});
+    uploadOutputsAndWait(service, action, spawnResult);
 
     // assert
     assertThat(
@@ -1884,7 +1878,7 @@ public class RemoteExecutionServiceTest {
         .when(cache)
         .uploadActionResult(any(), any(), any());
 
-    service.uploadOutputs(action, spawnResult, () -> {});
+    uploadOutputsAndWait(service, action, spawnResult);
 
     assertThat(eventHandler.getEvents()).hasSize(1);
     Event evt = eventHandler.getEvents().get(0);
@@ -1909,7 +1903,7 @@ public class RemoteExecutionServiceTest {
             .setRunnerName("test")
             .build();
 
-    service.uploadOutputs(action, spawnResult, () -> {});
+    uploadOutputsAndWait(service, action, spawnResult);
 
     assertThat(eventHandler.getPosts())
         .containsAtLeast(
@@ -1936,7 +1930,7 @@ public class RemoteExecutionServiceTest {
             .setRunnerName("test")
             .build();
 
-    service.uploadOutputs(action, spawnResult, () -> {});
+    uploadOutputsAndWait(service, action, spawnResult);
 
     // assert
     assertThat(cache.getNumFindMissingDigests()).isEmpty();
@@ -2036,7 +2030,7 @@ public class RemoteExecutionServiceTest {
               uploadBlobCalled.countDown();
               return future;
             })
-        .when(cache.cacheProtocol)
+        .when(cache.remoteCacheClient)
         .uploadBlob(any(), any(), any());
     ActionInput input = ActionInputHelper.fromPath("inputs/foo");
     fakeFileCache.createScratchInput(input, "input-foo");
@@ -2406,13 +2400,15 @@ public class RemoteExecutionServiceTest {
       ImmutableMap<String, String> executionInfo, RemoteActionResult result) {
     ImmutableSet.Builder<Artifact> outputs = ImmutableSet.builder();
     for (OutputFile file : result.getOutputFiles()) {
-      Path path = remotePathResolver.outputPathToLocalPath(file.getPath());
+      Path path =
+          remotePathResolver.outputPathToLocalPath(reencodeExternalToInternal(file.getPath()));
       Artifact output = ActionsTestUtil.createArtifact(artifactRoot, path);
       outputs.add(output);
     }
 
     for (OutputDirectory directory : result.getOutputDirectories()) {
-      Path path = remotePathResolver.outputPathToLocalPath(directory.getPath());
+      Path path =
+          remotePathResolver.outputPathToLocalPath(reencodeExternalToInternal(directory.getPath()));
       Artifact output =
           ActionsTestUtil.createTreeArtifactWithGeneratingAction(
               artifactRoot, path.relativeTo(execRoot));
@@ -2420,13 +2416,17 @@ public class RemoteExecutionServiceTest {
     }
 
     for (OutputSymlink fileSymlink : result.getOutputFileSymlinks()) {
-      Path path = remotePathResolver.outputPathToLocalPath(fileSymlink.getPath());
+      Path path =
+          remotePathResolver.outputPathToLocalPath(
+              reencodeExternalToInternal(fileSymlink.getPath()));
       Artifact output = ActionsTestUtil.createArtifact(artifactRoot, path);
       outputs.add(output);
     }
 
     for (OutputSymlink directorySymlink : result.getOutputDirectorySymlinks()) {
-      Path path = remotePathResolver.outputPathToLocalPath(directorySymlink.getPath());
+      Path path =
+          remotePathResolver.outputPathToLocalPath(
+              reencodeExternalToInternal(directorySymlink.getPath()));
       Artifact output =
           ActionsTestUtil.createTreeArtifactWithGeneratingAction(
               artifactRoot, path.relativeTo(execRoot));
@@ -2434,7 +2434,8 @@ public class RemoteExecutionServiceTest {
     }
 
     for (OutputSymlink symlink : result.getOutputSymlinks()) {
-      Path path = remotePathResolver.outputPathToLocalPath(symlink.getPath());
+      Path path =
+          remotePathResolver.outputPathToLocalPath(reencodeExternalToInternal(symlink.getPath()));
       Artifact output = ActionsTestUtil.createArtifact(artifactRoot, path);
       outputs.add(output);
     }
@@ -2524,7 +2525,8 @@ public class RemoteExecutionServiceTest {
         tempPathGenerator,
         null,
         remoteOutputChecker,
-        outputService);
+        outputService,
+        Sets.newConcurrentHashSet());
   }
 
   private RunfilesTree createRunfilesTree(String root, Collection<Artifact> artifacts) {
@@ -2569,5 +2571,12 @@ public class RemoteExecutionServiceTest {
       }
       dir.createDirectoryAndParents();
     }
+  }
+
+  private static void uploadOutputsAndWait(
+      RemoteExecutionService service, RemoteAction action, SpawnResult result) throws Exception {
+    SettableFuture<Void> future = SettableFuture.create();
+    service.uploadOutputs(action, result, () -> future.set(null));
+    future.get();
   }
 }

@@ -258,6 +258,25 @@ public class CommonCommandOptions extends OptionsBase {
   public boolean profileIncludeTargetLabel;
 
   @Option(
+      name = "experimental_profile_include_target_configuration",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.LOGGING,
+      effectTags = {OptionEffectTag.BAZEL_MONITORING},
+      help = "Includes target configuration hash in action events' JSON profile data.")
+  public boolean profileIncludeTargetConfiguration;
+
+  @Option(
+      name = "profiles_to_retain",
+      defaultValue = "5",
+      documentationCategory = OptionDocumentationCategory.LOGGING,
+      effectTags = {OptionEffectTag.BAZEL_MONITORING},
+      help =
+          "Number of profiles to retain in the output base. If there are more than this number of"
+              + " profiles in the output base, the oldest are deleted until the total is under the"
+              + " limit.")
+  public int profilesToRetain;
+
+  @Option(
       name = "profile",
       defaultValue = "null",
       documentationCategory = OptionDocumentationCategory.LOGGING,

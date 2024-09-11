@@ -128,6 +128,7 @@ sh_test(
     ],
     tags = [
         "no_windows",  # darwin-specific test
+        "requires-network",  # For Bzlmod
     ],
 )
 
@@ -837,13 +838,6 @@ sh_test(
 )
 
 sh_test(
-    name = "starlark_prefetching_test",
-    srcs = ["starlark_prefetching_test.sh"],
-    data = [":test-deps"],
-    tags = ["no_windows"],
-)
-
-sh_test(
     name = "external_starlark_load_test",
     size = "large",
     srcs = ["external_starlark_load_test.sh"],
@@ -1431,4 +1425,14 @@ sh_test(
         "@bazel_tools//tools/bash/runfiles",
     ],
     tags = ["no_windows"],
+)
+
+sh_test(
+    name = "profile_test",
+    size = "small",
+    srcs = ["profile_test.sh"],
+    data = [
+        ":test-deps",
+        "@bazel_tools//tools/bash/runfiles",
+    ],
 )

@@ -90,10 +90,8 @@ public final class FilesetEntryFunction implements SkyFunction {
       throw new FilesetEntryFunctionException(
           new RecursiveFilesystemTraversalException(
               String.format(
-                  "%s contains a directory artifact '%s' and is restricted by %s",
-                  params.getOwnerLabelForErrorMessages(),
-                  params.getDestPath(),
-                  "tools/allowlists/fileset_dir_in_files_allowlist"),
+                  "%s contains a directory artifact '%s'",
+                  params.getOwnerLabelForErrorMessages(), params.getDestPath()),
               RecursiveFilesystemTraversalException.Type.FILE_OPERATION_FAILURE));
     }
 
@@ -181,7 +179,17 @@ public final class FilesetEntryFunction implements SkyFunction {
 
       PathFragment targetName;
       try {
-        targetName = f.getTargetInSymlinkTree(direct.isFollowingSymlinks());
+        switch (direct.getSymlinkBehavior()) {
+          case COPY:
+            targetName = f.getTargetInSymlinkTree(false);
+            break;
+          case DEREFERENCE:
+            targetName = f.getTargetInSymlinkTree(true);
+            break;
+          default:
+            targetName = f.getPath().asPath().asFragment();
+            break;
+        }
       } catch (DanglingSymlinkException e) {
         throw new FilesetEntryFunctionException(e);
       }

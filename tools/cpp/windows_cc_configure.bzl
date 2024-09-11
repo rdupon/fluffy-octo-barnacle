@@ -794,7 +794,8 @@ def _get_clang_cl_vars(repository_ctx, paths, msvc_vars, target_arch):
         "%{clang_cl_cl_path_" + target_arch + "}": clang_cl_path,
         "%{clang_cl_link_path_" + target_arch + "}": lld_link_path,
         "%{clang_cl_lib_path_" + target_arch + "}": llvm_lib_path,
-        "%{clang_cl_ml_path_" + target_arch + "}": clang_cl_path,
+        # clang-cl does not support assembly files as input.
+        "%{clang_cl_ml_path_" + target_arch + "}": msvc_vars["%{msvc_ml_path_" + target_arch + "}"],
         # LLVM's lld-link.exe doesn't support /DEBUG:FASTLINK.
         "%{clang_cl_dbg_mode_debug_flag_" + target_arch + "}": "/DEBUG",
         "%{clang_cl_fastbuild_mode_debug_flag_" + target_arch + "}": "/DEBUG",
@@ -802,6 +803,19 @@ def _get_clang_cl_vars(repository_ctx, paths, msvc_vars, target_arch):
         "%{clang_cl_parse_showincludes_" + target_arch + "}": repr(True),
     }
     return clang_cl_vars
+
+def _get_msvc_deps_scanner_vars(repository_ctx, paths, template_vars, target_arch = "x64"):
+    repository_ctx.template(
+        "msvc_deps_scanner_wrapper_" + target_arch + ".bat",
+        paths["@bazel_tools//tools/cpp:msvc_deps_scanner_wrapper.bat.tpl"],
+        {
+            "%{cc}": template_vars["%{msvc_cl_path_" + target_arch + "}"],
+        },
+    )
+
+    return {
+        "%{msvc_deps_scanner_wrapper_path_" + target_arch + "}": "msvc_deps_scanner_wrapper_" + target_arch + ".bat",
+    }
 
 def configure_windows_toolchain(repository_ctx):
     """Configure C++ toolchain on Windows."""
@@ -812,6 +826,7 @@ def configure_windows_toolchain(repository_ctx):
         "@bazel_tools//tools/cpp:vc_installation_error.bat.tpl",
         "@bazel_tools//tools/cpp:msys_gcc_installation_error.bat",
         "@bazel_tools//tools/cpp:clang_installation_error.bat.tpl",
+        "@bazel_tools//tools/cpp:msvc_deps_scanner_wrapper.bat.tpl",
     ])
 
     repository_ctx.symlink(
@@ -838,6 +853,10 @@ def configure_windows_toolchain(repository_ctx):
     template_vars.update(msvc_vars_arm64)
     template_vars.update(_get_clang_cl_vars(repository_ctx, paths, msvc_vars_arm64, "arm64"))
 
+    template_vars.update(_get_msvc_deps_scanner_vars(repository_ctx, paths, template_vars, "x64"))
+    template_vars.update(_get_msvc_deps_scanner_vars(repository_ctx, paths, template_vars, "x86"))
+    template_vars.update(_get_msvc_deps_scanner_vars(repository_ctx, paths, template_vars, "arm"))
+    template_vars.update(_get_msvc_deps_scanner_vars(repository_ctx, paths, template_vars, "arm64"))
     repository_ctx.template(
         "BUILD",
         paths["@bazel_tools//tools/cpp:BUILD.windows.tpl"],

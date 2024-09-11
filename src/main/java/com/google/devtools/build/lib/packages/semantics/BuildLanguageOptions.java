@@ -20,6 +20,7 @@ import com.google.common.collect.Interner;
 import com.google.devtools.build.lib.concurrent.BlazeInterners;
 import com.google.devtools.common.options.Converters.CommaSeparatedNonEmptyOptionListConverter;
 import com.google.devtools.common.options.Converters.CommaSeparatedOptionListConverter;
+import com.google.devtools.common.options.Converters.CommaSeparatedOptionSetConverter;
 import com.google.devtools.common.options.Option;
 import com.google.devtools.common.options.OptionDocumentationCategory;
 import com.google.devtools.common.options.OptionEffectTag;
@@ -96,6 +97,60 @@ public final class BuildLanguageOptions extends OptionsBase {
               + "Bazel within its own source tree. Finally, a value of the empty string disables "
               + "the builtins injection mechanism entirely.")
   public String experimentalBuiltinsBzlPath;
+
+  @Option(
+      name = "incompatible_autoload_externally",
+      converter = CommaSeparatedOptionSetConverter.class,
+      defaultValue = "",
+      documentationCategory = OptionDocumentationCategory.STARLARK_SEMANTICS,
+      effectTags = {OptionEffectTag.LOSES_INCREMENTAL_STATE, OptionEffectTag.BUILD_FILE_SEMANTICS},
+      metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
+      help =
+          "A comma-separated list of rules (or other symbols) that were previously part of Bazel"
+              + " and which are now to be retrieved from their respective external repositories."
+              + " This flag is intended to be used to facilitate migration of rules out of Bazel."
+              + " See also https://github.com/bazelbuild/bazel/issues/23043.\n"
+              + "A symbol that is autoloaded within a file behaves as if its built-into-Bazel"
+              + " definition were replaced by its canonical new definition in an external"
+              + " repository. For a BUILD file, this essentially means implicitly adding a load()"
+              + " statement. For a .bzl file, it's either a load() statement or a change to a field"
+              + " of the `native` object, depending on whether the autoloaded symbol is a rule.\n"
+              + "Bazel maintains a hardcoded list of all symbols that may be autoloaded; only those"
+              + " symbols may appear in this flag. For each symbol, Bazel knows the new definition"
+              + " location in an external repository, as well as a set of special-cased"
+              + " repositories that must not autoload it to avoid creating cycles.\n"
+              + "A list item of \"+foo\" in this flag causes symbol foo to be autoloaded, except in"
+              + " foo's exempt repositories, within which the Bazel-defined version of foo is still"
+              + " available.\n"
+              + "A list item of \"foo\" triggers autoloading as above, but the Bazel-defined"
+              + " version of foo is not made available to the excluded repositories. This ensures"
+              + " that foo's external repository does not depend on the old Bazel implementation of"
+              + " foo\n"
+              + "A list item of \"-foo\" does not trigger any autoloading, but makes the"
+              + " Bazel-defined version of foo inaccessible throughout the workspace. This is used"
+              + " to validate that the workspace is ready for foo's definition to be deleted from"
+              + " Bazel.\n"
+              + "If a symbol is not named in this flag then it continues to work as normal -- no"
+              + " autoloading is done, nor is the Bazel-defined version suppressed. For"
+              + " configuration see"
+              + " https://github.com/bazelbuild/bazel/blob/master/src/main/java/com/google/devtools/build/lib/packages/AutoloadSymbols.java"
+              + " As a shortcut also whole repository may be used, for example +@rules_python will"
+              + " autoload all Python rules.")
+  public List<String> incompatibleAutoloadExternally;
+
+  @Option(
+      name = "repositories_without_autoloads",
+      converter = CommaSeparatedOptionSetConverter.class,
+      defaultValue = "",
+      documentationCategory = OptionDocumentationCategory.STARLARK_SEMANTICS,
+      effectTags = {OptionEffectTag.LOSES_INCREMENTAL_STATE, OptionEffectTag.BUILD_FILE_SEMANTICS},
+      metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
+      help =
+          "A list of additional repositories (beyond the hardcoded ones Bazel knows about) where "
+              + "autoloads are not to be added. This should typically contain repositories that are"
+              + " transitively depended on by a repository that may be loaded automatically "
+              + "(and which can therefore potentially create a cycle).")
+  public List<String> repositoriesWithoutAutoloads;
 
   @Option(
       name = "experimental_builtins_dummy",
@@ -208,7 +263,7 @@ public final class BuildLanguageOptions extends OptionsBase {
 
   @Option(
       name = "enable_workspace",
-      defaultValue = "true",
+      defaultValue = "false",
       documentationCategory = OptionDocumentationCategory.STARLARK_SEMANTICS,
       effectTags = OptionEffectTag.LOADING_AND_ANALYSIS,
       help =
@@ -226,17 +281,6 @@ public final class BuildLanguageOptions extends OptionsBase {
               + " href=\"https://bazel.build/rules/lib/globals/module#use_extension\"><code>use_extension</code></a>"
               + " function.")
   public boolean experimentalIsolatedExtensionUsages;
-
-  @Option(
-      name = "incompatible_existing_rules_immutable_view",
-      defaultValue = "true",
-      documentationCategory = OptionDocumentationCategory.STARLARK_SEMANTICS,
-      effectTags = {OptionEffectTag.BUILD_FILE_SEMANTICS, OptionEffectTag.LOADING_AND_ANALYSIS},
-      metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
-      help =
-          "If set to true, native.existing_rule and native.existing_rules return lightweight"
-              + " immutable view objects instead of mutable dicts.")
-  public boolean incompatibleExistingRulesImmutableView;
 
   @Option(
       name = "incompatible_stop_exporting_build_file_path",
@@ -621,7 +665,7 @@ public final class BuildLanguageOptions extends OptionsBase {
 
   @Option(
       name = "incompatible_top_level_aspects_require_providers",
-      defaultValue = "false",
+      defaultValue = "true",
       documentationCategory = OptionDocumentationCategory.STARLARK_SEMANTICS,
       metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
       effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS},
@@ -708,6 +752,18 @@ public final class BuildLanguageOptions extends OptionsBase {
   public boolean experimentalRuleExtensionApi;
 
   @Option(
+      name = "experimental_dormant_deps",
+      defaultValue = "false",
+      documentationCategory = OptionDocumentationCategory.STARLARK_SEMANTICS,
+      effectTags = {OptionEffectTag.BUILD_FILE_SEMANTICS},
+      metadataTags = {OptionMetadataTag.EXPERIMENTAL},
+      help =
+          " If set to true, attr.label(materializer=), attr(for_dependency_resolution=),"
+              + " attr.dormant_label(), attr.dormant_label_list() and"
+              + " rule(for_dependency_resolution=) are allowed.")
+  public boolean experimentalDormantDeps;
+
+  @Option(
       name = "incompatible_enable_deprecated_label_apis",
       defaultValue = "true",
       documentationCategory = OptionDocumentationCategory.STARLARK_SEMANTICS,
@@ -719,7 +775,7 @@ public final class BuildLanguageOptions extends OptionsBase {
 
   @Option(
       name = "incompatible_disallow_ctx_resolve_tools",
-      defaultValue = "false",
+      defaultValue = "true",
       documentationCategory = OptionDocumentationCategory.STARLARK_SEMANTICS,
       effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS},
       metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
@@ -748,6 +804,8 @@ public final class BuildLanguageOptions extends OptionsBase {
                 incompatibleStopExportingLanguageModules)
             .setBool(INCOMPATIBLE_ALLOW_TAGS_PROPAGATION, experimentalAllowTagsPropagation)
             .set(EXPERIMENTAL_BUILTINS_BZL_PATH, experimentalBuiltinsBzlPath)
+            .set(INCOMPATIBLE_AUTOLOAD_EXTERNALLY, incompatibleAutoloadExternally)
+            .set(REPOSITORIES_WITHOUT_AUTOLOAD, repositoriesWithoutAutoloads)
             .setBool(EXPERIMENTAL_BUILTINS_DUMMY, experimentalBuiltinsDummy)
             .set(EXPERIMENTAL_BUILTINS_INJECTION_OVERRIDE, experimentalBuiltinsInjectionOverride)
             .setBool(EXPERIMENTAL_BZL_VISIBILITY, experimentalBzlVisibility)
@@ -762,8 +820,6 @@ public final class BuildLanguageOptions extends OptionsBase {
             .setBool(ENABLE_BZLMOD, enableBzlmod)
             .setBool(ENABLE_WORKSPACE, enableWorkspace)
             .setBool(EXPERIMENTAL_ISOLATED_EXTENSION_USAGES, experimentalIsolatedExtensionUsages)
-            .setBool(
-                INCOMPATIBLE_EXISTING_RULES_IMMUTABLE_VIEW, incompatibleExistingRulesImmutableView)
             .setBool(EXPERIMENTAL_ACTION_RESOURCE_SET, experimentalActionResourceSet)
             .setBool(EXPERIMENTAL_GOOGLE_LEGACY_API, experimentalGoogleLegacyApi)
             .setBool(EXPERIMENTAL_PLATFORMS_API, experimentalPlatformsApi)
@@ -833,6 +889,7 @@ public final class BuildLanguageOptions extends OptionsBase {
                 INCOMPATIBLE_DISABLE_TARGET_DEFAULT_PROVIDER_FIELDS,
                 incompatibleDisableTargetDefaultProviderFields)
             .setBool(EXPERIMENTAL_RULE_EXTENSION_API, experimentalRuleExtensionApi)
+            .setBool(EXPERIMENTAL_DORMANT_DEPS, experimentalDormantDeps)
             .setBool(INCOMPATIBLE_ENABLE_DEPRECATED_LABEL_APIS, enableDeprecatedLabelApis)
             .setBool(
                 INCOMPATIBLE_STOP_EXPORTING_BUILD_FILE_PATH, incompatibleStopExportingBuildFilePath)
@@ -870,11 +927,9 @@ public final class BuildLanguageOptions extends OptionsBase {
       "-experimental_enable_first_class_macros";
   public static final String EXPERIMENTAL_ENABLE_SCL_DIALECT = "-experimental_enable_scl_dialect";
   public static final String ENABLE_BZLMOD = "+enable_bzlmod";
-  public static final String ENABLE_WORKSPACE = "+enable_workspace";
+  public static final String ENABLE_WORKSPACE = "-enable_workspace";
   public static final String EXPERIMENTAL_ISOLATED_EXTENSION_USAGES =
       "-experimental_isolated_extension_usages";
-  public static final String INCOMPATIBLE_EXISTING_RULES_IMMUTABLE_VIEW =
-      "+incompatible_existing_rules_immutable_view";
   public static final String EXPERIMENTAL_GOOGLE_LEGACY_API = "-experimental_google_legacy_api";
   public static final String EXPERIMENTAL_PLATFORMS_API = "-experimental_platforms_api";
   public static final String EXPERIMENTAL_REPO_REMOTE_EXEC = "-experimental_repo_remote_exec";
@@ -917,7 +972,7 @@ public final class BuildLanguageOptions extends OptionsBase {
   public static final String INCOMPATIBLE_UNAMBIGUOUS_LABEL_STRINGIFICATION =
       "+incompatible_unambiguous_label_stringification";
   public static final String INCOMPATIBLE_TOP_LEVEL_ASPECTS_REQUIRE_PROVIDERS =
-      "-incompatible_top_level_aspects_require_providers";
+      "+incompatible_top_level_aspects_require_providers";
   public static final String INCOMPATIBLE_DISABLE_STARLARK_HOST_TRANSITIONS =
       "-incompatible_disable_starlark_host_transitions";
   public static final String INCOMPATIBLE_MERGE_FIXED_AND_DEFAULT_SHELL_ENV =
@@ -933,15 +988,20 @@ public final class BuildLanguageOptions extends OptionsBase {
   public static final String INCOMPATIBLE_DISABLE_TARGET_DEFAULT_PROVIDER_FIELDS =
       "-incompatible_disable_target_default_provider_fields";
   public static final String EXPERIMENTAL_RULE_EXTENSION_API = "-experimental_rule_extension_api";
+  public static final String EXPERIMENTAL_DORMANT_DEPS = "-experimental_dormant_deps";
   public static final String INCOMPATIBLE_ENABLE_DEPRECATED_LABEL_APIS =
       "+incompatible_enable_deprecated_label_apis";
   public static final String INCOMPATIBLE_STOP_EXPORTING_BUILD_FILE_PATH =
       "-incompatible_stop_exporting_build_file_path";
   public static final String INCOMPATIBLE_DISALLOW_CTX_RESOLVE_TOOLS =
-      "-incompatible_disallow_ctx_resolve_tools";
+      "+incompatible_disallow_ctx_resolve_tools";
   // non-booleans
   public static final StarlarkSemantics.Key<String> EXPERIMENTAL_BUILTINS_BZL_PATH =
       new StarlarkSemantics.Key<>("experimental_builtins_bzl_path", "%bundled%");
+  public static final StarlarkSemantics.Key<List<String>> INCOMPATIBLE_AUTOLOAD_EXTERNALLY =
+      new StarlarkSemantics.Key<>("incompatible_autoload_externally", ImmutableList.of());
+  public static final StarlarkSemantics.Key<List<String>> REPOSITORIES_WITHOUT_AUTOLOAD =
+      new StarlarkSemantics.Key<>("repositories_without_autoloads", ImmutableList.of());
   public static final StarlarkSemantics.Key<List<String>> EXPERIMENTAL_BUILTINS_INJECTION_OVERRIDE =
       new StarlarkSemantics.Key<>("experimental_builtins_injection_override", ImmutableList.of());
   public static final StarlarkSemantics.Key<Long> MAX_COMPUTATION_STEPS =

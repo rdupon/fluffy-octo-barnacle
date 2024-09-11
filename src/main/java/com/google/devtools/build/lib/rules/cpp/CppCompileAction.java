@@ -96,6 +96,7 @@ import com.google.devtools.build.skyframe.SkyFunction;
 import com.google.devtools.build.skyframe.SkyKey;
 import com.google.devtools.build.skyframe.SkyValue;
 import com.google.devtools.build.skyframe.SkyframeLookupResult;
+import com.google.protobuf.ByteString;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -615,7 +616,7 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
   }
 
   @Override
-  protected final NestedSet<Artifact> getOriginalInputs() {
+  public final NestedSet<Artifact> getOriginalInputs() {
     return mandatoryInputs;
   }
 
@@ -1026,7 +1027,7 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
       for (Artifact input : set.toList()) {
         if (input.isTreeArtifact()) {
           allowedIncludes.addAll(
-              actionExecutionContext.getArtifactExpander().expandTreeArtifact(input));
+              actionExecutionContext.getArtifactExpander().tryExpandTreeArtifact(input));
         }
         allowedIncludes.add(input);
       }
@@ -1508,16 +1509,11 @@ public class CppCompileAction extends AbstractAction implements IncludeScannable
   }
 
   @Nullable
-  private byte[] getDotDContents(SpawnResult spawnResult) throws EnvironmentalExecException {
+  private byte[] getDotDContents(SpawnResult spawnResult) {
     if (getDotdFile() != null) {
-      InputStream in = spawnResult.getInMemoryOutput(getDotdFile());
-      if (in != null) {
-        try {
-          return ByteStreams.toByteArray(in);
-        } catch (IOException e) {
-          throw new EnvironmentalExecException(
-              e, createFailureDetail("Reading in-memory .d file failed", Code.D_FILE_READ_FAILURE));
-        }
+      ByteString content = spawnResult.getInMemoryOutput(getDotdFile());
+      if (content != null) {
+        return content.toByteArray();
       }
     }
     return null;

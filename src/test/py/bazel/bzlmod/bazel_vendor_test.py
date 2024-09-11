@@ -261,7 +261,7 @@ class BazelVendorTest(test_base.TestBase):
     self.assertIn(
         "ERROR: Vendoring some repos failed with errors: [Repository '@@nono'"
         " is not defined, No repository visible as '@nana' from main"
-        ' repository]',
+        ' repository.]',
         stderr,
     )
 
@@ -808,6 +808,14 @@ class BazelVendorTest(test_base.TestBase):
         'Hello from abs!\nHello from foo!\nHello from bar!\nHello from pkg'
         ' bar!\n',
     )
+
+  def testVendorAliasTarget(self):
+    self.ScratchFile('foo/file.txt')
+    self.ScratchFile('foo/BUILD', ['alias(name="foo", actual="file.txt")'])
+
+    # This should not fail
+    # Regression test for https://github.com/bazelbuild/bazel/issues/23300
+    self.RunBazel(['vendor', '//foo/...', '--vendor_dir=vendor'])
 
 
 if __name__ == '__main__':

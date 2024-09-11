@@ -292,6 +292,7 @@ java_library(
         ":config/toolchain_type_requirement",
         ":config/transitions/composing_transition_factory",
         ":config/transitions/configuration_transition",
+        ":config/transitions/no_config_transition",
         ":config/transitions/no_transition",
         ":config/transitions/patch_transition",
         ":config/transitions/split_transition",
@@ -304,6 +305,7 @@ java_library(
         ":constraints/supported_environments",
         ":constraints/supported_environments_provider",
         ":dependency_kind",
+        ":dormant_dependency",
         ":exec_group_collection",
         ":extra/extra_action_info_file_write_action",
         ":extra_action_artifacts_provider",
@@ -332,6 +334,7 @@ java_library(
         ":starlark/starlark_api_provider",
         ":starlark/starlark_exec_group_collection",
         ":starlark/starlark_late_bound_default",
+        ":starlark/starlark_materializing_late_bound_default",
         ":starlark/starlark_toolchain_context",
         ":starlark/starlark_transition",
         ":starlark/template_dict",
@@ -649,6 +652,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/actions:resource_manager",
         "//src/main/java/com/google/devtools/build/lib/bugreport",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
+        "//src/main/java/com/google/devtools/build/lib/collect",
         "//src/main/java/com/google/devtools/build/lib/concurrent",
         "//src/main/java/com/google/devtools/build/lib/events",
         "//src/main/java/com/google/devtools/build/lib/packages",
@@ -1291,6 +1295,7 @@ java_library(
         ":transitive_info_provider",
         "//src/main/java/com/google/devtools/build/lib/collect/nestedset",
         "//src/main/java/com/google/devtools/build/lib/packages:package_specification",
+        "//third_party:guava",
     ],
 )
 
@@ -1599,6 +1604,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/analysis/platform",
         "//src/main/java/com/google/devtools/build/lib/collect/nestedset",
+        "//src/main/java/com/google/devtools/build/lib/exec:spawn_log_context",
         "//src/main/java/com/google/devtools/build/lib/util",
         "//src/main/java/com/google/devtools/build/lib/util:detailed_exit_code",
         "//src/main/java/com/google/devtools/build/lib/vfs",
@@ -1924,6 +1930,7 @@ java_library(
         ":config/core_options",
         ":config/fragment_options",
         ":config/transitions/configuration_transition",
+        ":config/transitions/no_config_transition",
         ":config/transitions/patch_transition",
         ":config/transitions/transition_factory",
         ":platform_options",
@@ -2442,6 +2449,7 @@ java_library(
         ":test/test_configuration",
         ":transitive_dependency_state",
         ":transitive_info_provider_map_builder",
+        ":visibility_provider",
         "//src/main/java/com/google/devtools/build/lib/analysis/platform",
         "//src/main/java/com/google/devtools/build/lib/analysis/platform:utils",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
@@ -2597,11 +2605,39 @@ java_library(
 )
 
 java_library(
+    name = "dormant_dependency",
+    srcs = ["DormantDependency.java"],
+    deps = [
+        "//src/main/java/com/google/devtools/build/lib/cmdline",
+        "//src/main/java/net/starlark/java/annot",
+        "//src/main/java/net/starlark/java/eval",
+    ],
+)
+
+java_library(
+    name = "starlark/starlark_materializing_late_bound_default",
+    srcs = ["starlark/StarlarkMaterializingLateBoundDefault.java"],
+    deps = [
+        ":dormant_dependency",
+        "//src/main/java/com/google/devtools/build/lib/cmdline",
+        "//src/main/java/com/google/devtools/build/lib/events",
+        "//src/main/java/com/google/devtools/build/lib/packages",
+        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization",
+        "//src/main/java/net/starlark/java/eval",
+        "//third_party:error_prone_annotations",
+        "//third_party:guava",
+        "//third_party:jsr305",
+        "//third_party/protobuf:protobuf_java",
+    ],
+)
+
+java_library(
     name = "starlark/starlark_late_bound_default",
     srcs = ["starlark/StarlarkLateBoundDefault.java"],
     deps = [
         "//src/main/java/com/google/devtools/build/lib/analysis/starlark/annotations",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
+        "//src/main/java/com/google/devtools/build/lib/events",
         "//src/main/java/com/google/devtools/build/lib/packages",
         "//src/main/java/com/google/devtools/build/lib/starlarkbuildapi",
         "//src/main/java/net/starlark/java/annot",

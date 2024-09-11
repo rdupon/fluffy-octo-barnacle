@@ -44,11 +44,6 @@ tasks:
       - "-//src/test/shell/bazel:bazel_coverage_cc_released_test_gcc"
       - "-//src/test/shell/bazel:bazel_coverage_cc_head_test_gcc"
       - "-//src/test/shell/bazel:bazel_coverage_sh_test"
-      # Centos7 uses python 2 by default, so these fail: https://github.com/bazelbuild/bazel/issues/18776
-      - "-//src/test/shell/bazel/android:android_instrumentation_test_integration_test"
-      - "-//src/test/shell/bazel/android:android_instrumentation_test_integration_test_with_head_android_tools"
-      - "-//src/test/shell/bazel/android:aapt_integration_test"
-      - "-//src/test/shell/bazel/android:aapt_integration_test_with_head_android_tools"
     include_json_profile:
       - build
       - test
@@ -210,7 +205,7 @@ tasks:
       - build
       - test
   macos_arm64:
-    shards: 5
+    shards: 10
     shell_commands:
       - sed -i.bak -e 's/^# android_sdk_repository/android_sdk_repository/' -e 's/^#
         android_ndk_repository/android_ndk_repository/' WORKSPACE.bzlmod
@@ -335,6 +330,7 @@ tasks:
       - "--experimental_remote_cache_async"
       - "--experimental_remote_merkle_tree_cache"
       - "--remote_download_minimal"
+      - "--experimental_output_paths=strip"
     build_targets:
       - "//src:bazel"
       - "//src:bazel_jdk_minimal"
@@ -346,6 +342,7 @@ tasks:
       - "--experimental_remote_cache_async"
       - "--experimental_remote_merkle_tree_cache"
       - "--remote_download_minimal"
+      - "--experimental_output_paths=strip"
     test_targets:
       - "//scripts/..."
       - "//src/java_tools/..."

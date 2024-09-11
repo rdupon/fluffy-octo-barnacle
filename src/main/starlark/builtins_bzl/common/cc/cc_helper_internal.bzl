@@ -32,6 +32,9 @@ PRIVATE_STARLARKIFICATION_ALLOWLIST = [
     ("", "rust/private"),
     ("rules_rust", "rust/private"),
     ("", "third_party/gpus/cuda"),
+    ("", "tools/build_defs/go"),
+    ("", "third_party/bazel_rules/rules_java"),
+    ("rules_java", ""),
 ] + CREATE_COMPILE_ACTION_API_ALLOWLISTED_PACKAGES
 
 artifact_category = struct(
@@ -46,6 +49,12 @@ artifact_category = struct(
     OBJECT_FILE = "OBJECT_FILE",
     PIC_OBJECT_FILE = "PIC_OBJECT_FILE",
     CPP_MODULE = "CPP_MODULE",
+    CPP_MODULE_GCM = "CPP_MODULE_GCM",
+    CPP_MODULE_IFC = "CPP_MODULE_IFC",
+    CPP_MODULES_INFO = "CPP_MODULES_INFO",
+    CPP_MODULES_DDI = "CPP_MODULES_DDI",
+    CPP_MODULES_MODMAP = "CPP_MODULES_MODMAP",
+    CPP_MODULES_MODMAP_INPUT = "CPP_MODULES_MODMAP_INPUT",
     GENERATED_ASSEMBLY = "GENERATED_ASSEMBLY",
     PROCESSED_HEADER = "PROCESSED_HEADER",
     GENERATED_HEADER = "GENERATED_HEADER",

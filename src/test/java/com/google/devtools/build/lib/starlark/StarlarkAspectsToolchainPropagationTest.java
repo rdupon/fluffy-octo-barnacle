@@ -540,12 +540,13 @@ public final class StarlarkAspectsToolchainPropagationTest extends AnalysisTestC
         )
 
         def _rule_impl(ctx):
-          pass
+          return [MyProvider()]
 
         r1 = rule(
           implementation = _rule_impl,
           toolchains = ['//rule:toolchain_type_1'],
           exec_groups = {"gp": exec_group(toolchains = ['//rule:toolchain_type_2'])},
+          provides = [MyProvider],
         )
         """);
     scratch.file(
@@ -1103,8 +1104,8 @@ public final class StarlarkAspectsToolchainPropagationTest extends AnalysisTestC
     var value = ((StarlarkInfo) configuredAspect.get(providerKey)).getValue("value");
     assertThat((Iterable<?>) value)
         .containsExactly(
-            "toolchain_aspect has param = xxx on @//test:t1",
-            "toolchain_aspect has param = xxx on @//toolchain:foo with tool in ToolchainInfo ="
+            "toolchain_aspect has param = xxx on @@//test:t1",
+            "toolchain_aspect has param = xxx on @@//toolchain:foo with tool in ToolchainInfo ="
                 + " <generated file toolchain/atool>");
   }
 
@@ -1172,8 +1173,8 @@ public final class StarlarkAspectsToolchainPropagationTest extends AnalysisTestC
     var value = ((StarlarkInfo) configuredAspect.get(providerKey)).getValue("value");
     assertThat((Iterable<?>) value)
         .containsExactly(
-            "toolchain_aspect has param = xxx on @//test:t1",
-            "toolchain_aspect has param = xxx on @//toolchain:foo with tool in"
+            "toolchain_aspect has param = xxx on @@//test:t1",
+            "toolchain_aspect has param = xxx on @@//toolchain:foo with tool in"
                 + " ToolchainInfo = <generated file toolchain/atool>");
   }
 
@@ -1243,8 +1244,8 @@ public final class StarlarkAspectsToolchainPropagationTest extends AnalysisTestC
     var value = ((StarlarkInfo) configuredAspect.get(providerKey)).getValue("value");
     assertThat((Iterable<?>) value)
         .containsExactly(
-            "toolchain_aspect has param = xxx on @//test:t1",
-            "toolchain_aspect has param = xxx on @//toolchain:foo with tool in ToolchainInfo ="
+            "toolchain_aspect has param = xxx on @@//test:t1",
+            "toolchain_aspect has param = xxx on @@//toolchain:foo with tool in ToolchainInfo ="
                 + " <generated file toolchain/atool>");
   }
 
@@ -1395,10 +1396,10 @@ public final class StarlarkAspectsToolchainPropagationTest extends AnalysisTestC
     var value = ((StarlarkInfo) configuredAspect.get(providerKey)).getValue("value");
     assertThat((Iterable<?>) value)
         .containsExactly(
-            "toolchain_aspect on @//test:t1 can see required_aspect (required_aspect on"
-                + " @//test:t1)",
-            "toolchain_aspect on @//toolchain:foo can see required_aspect (required_aspect on"
-                + " @//toolchain:foo with tool in ToolchainInfo = <generated file"
+            "toolchain_aspect on @@//test:t1 can see required_aspect (required_aspect on"
+                + " @@//test:t1)",
+            "toolchain_aspect on @@//toolchain:foo can see required_aspect (required_aspect on"
+                + " @@//toolchain:foo with tool in ToolchainInfo = <generated file"
                 + " toolchain/atool>)");
   }
 
@@ -1467,9 +1468,9 @@ public final class StarlarkAspectsToolchainPropagationTest extends AnalysisTestC
     var value = ((StarlarkInfo) configuredTarget.get(providerKey)).getValue("value");
     assertThat((Iterable<?>) value)
         .containsExactly(
-            "toolchain_aspect on @//test:t2",
-            "toolchain_aspect on @//toolchain:foo_with_dep",
-            "toolchain_aspect on @//toolchain:toolchain_dep");
+            "toolchain_aspect on @@//test:t2",
+            "toolchain_aspect on @@//toolchain:foo_with_dep",
+            "toolchain_aspect on @@//toolchain:toolchain_dep");
   }
 
   private ImmutableList<AspectKey> getAspectKeys(String targetLabel, String aspectLabel) {

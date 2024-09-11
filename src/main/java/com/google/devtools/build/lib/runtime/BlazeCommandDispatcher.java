@@ -264,7 +264,7 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
                   lastResult,
                   commandExtensionReporter);
           break;
-        } catch (RemoteCacheEvictedException e) {
+        } catch (RemoteCacheTransientErrorException e) {
           attemptedCommandIds.add(e.getCommandId());
           lastResult = e.getResult();
         }
@@ -322,7 +322,7 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
       Set<UUID> attemptedCommandIds,
       @Nullable BlazeCommandResult lastResult,
       CommandExtensionReporter commandExtensionReporter)
-      throws RemoteCacheEvictedException {
+      throws RemoteCacheTransientErrorException {
     // Record the start time for the profiler. Do not put anything before this!
     long execStartTimeNanos = runtime.getClock().nanoTime();
 
@@ -365,7 +365,7 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
                 env.getCommandId()));
         return Preconditions.checkNotNull(lastResult);
       } else {
-        outErr.printErrLn("Found remote cache eviction error, retrying the build...");
+        outErr.printErrLn("Found transient remote cache error, retrying the build...");
       }
     }
 
@@ -387,8 +387,7 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
             tracerEnabled,
             storedEventHandler,
             workspace,
-            commonOptions,
-            options.getOptions(BuildEventProtocolOptions.class),
+            options,
             env,
             execStartTimeNanos,
             waitTimeInMs);
@@ -487,7 +486,11 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
 
         DebugLoggerConfigurator.setupLogging(commonOptions.verbosity);
 
-        EventHandler handler = createEventHandler(outErr, eventHandlerOptions, env);
+        boolean newStatsSummary =
+            options.getOptions(ExecutionOptions.class) != null
+                && options.getOptions(ExecutionOptions.class).statsSummary;
+        EventHandler handler =
+            createEventHandler(outErr, eventHandlerOptions, env, newStatsSummary);
         reporter.addHandler(handler);
         env.getEventBus().register(handler);
 
@@ -497,7 +500,7 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
         // modified.
         if (!eventHandlerOptions.useColor()) {
           UiEventHandler ansiAllowingHandler =
-              createEventHandler(colorfulOutErr, eventHandlerOptions, env);
+              createEventHandler(colorfulOutErr, eventHandlerOptions, env, newStatsSummary);
           reporter.registerAnsiAllowingHandler(handler, ansiAllowingHandler);
           env.getEventBus().register(new PassiveExperimentalEventHandler(ansiAllowingHandler));
         }
@@ -704,13 +707,13 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
       if (newResult.getExitCode().equals(ExitCode.REMOTE_CACHE_EVICTED)) {
         var executionOptions =
             Preconditions.checkNotNull(options.getOptions(ExecutionOptions.class));
-        if (attemptedCommandIds.size() < executionOptions.remoteRetryOnCacheEviction) {
-          throw new RemoteCacheEvictedException(env.getCommandId(), newResult);
+        if (attemptedCommandIds.size() < executionOptions.remoteRetryOnTransientCacheError) {
+          throw new RemoteCacheTransientErrorException(env.getCommandId(), newResult);
         }
       }
 
       return newResult;
-    } catch (RemoteCacheEvictedException e) {
+    } catch (RemoteCacheTransientErrorException e) {
       throw e;
     } catch (Throwable e) {
       logger.atSevere().withCause(e).log("Shutting down due to exception");
@@ -729,11 +732,16 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
 
       try {
         Profiler.instance().stop();
-        MemoryProfiler.instance().stop();
+        if (profilerStartedEvent.getProfile() instanceof LocalInstrumentationOutput profile) {
+          profile.makeConvenienceLink();
+        }
       } catch (IOException e) {
         env.getReporter()
             .handle(Event.error("Error while writing profile file: " + e.getMessage()));
       }
+
+      Profiler.instance().clear();
+      MemoryProfiler.instance().stop();
 
       // Swallow IOException, as we are already in a finally clause
       Flushables.flushQuietly(outErr.getOutputStream());
@@ -745,11 +753,11 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
     }
   }
 
-  private static class RemoteCacheEvictedException extends IOException {
+  private static class RemoteCacheTransientErrorException extends IOException {
     private final UUID commandId;
     private final BlazeCommandResult result;
 
-    private RemoteCacheEvictedException(UUID commandId, BlazeCommandResult result) {
+    private RemoteCacheTransientErrorException(UUID commandId, BlazeCommandResult result) {
       this.commandId = commandId;
       this.result = result;
     }
@@ -865,7 +873,7 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
 
   /** Returns the event handler to use for this Blaze command. */
   private UiEventHandler createEventHandler(
-      OutErr outErr, UiOptions eventOptions, CommandEnvironment env) {
+      OutErr outErr, UiOptions eventOptions, CommandEnvironment env, boolean newStatsSummary) {
     Path workspacePath = runtime.getWorkspace().getDirectories().getWorkspace();
     PathFragment workspacePathFragment = workspacePath == null ? null : workspacePath.asFragment();
     return new UiEventHandler(
@@ -874,7 +882,8 @@ public class BlazeCommandDispatcher implements CommandDispatcher {
         runtime.getClock(),
         env.getEventBus(),
         workspacePathFragment,
-        env.withMergedAnalysisAndExecutionSourceOfTruth());
+        env.withMergedAnalysisAndExecutionSourceOfTruth(),
+        newStatsSummary);
   }
 
   /** Returns the runtime instance shared by the commands that this dispatcher dispatches to. */

@@ -22,6 +22,7 @@ import com.google.common.flogger.GoogleLogger;
 import com.google.devtools.build.lib.actions.ActionCompletionEvent;
 import com.google.devtools.build.lib.actions.ActionKeyContext;
 import com.google.devtools.build.lib.actions.ActionResultReceivedEvent;
+import com.google.devtools.build.lib.actions.cache.PostableActionCacheStats;
 import com.google.devtools.build.lib.buildtool.BuildRequest;
 import com.google.devtools.build.lib.buildtool.buildevent.BuildCompleteEvent;
 import com.google.devtools.build.lib.buildtool.buildevent.ExecutionStartingEvent;
@@ -142,6 +143,11 @@ public class BuildSummaryStatsModule extends BlazeModule {
   }
 
   @Subscribe
+  public void actionCacheStats(PostableActionCacheStats event) {
+    spawnStats.recordActionCacheStats(event.asProto());
+  }
+
+  @Subscribe
   public void buildComplete(BuildCompleteEvent event) {
     try {
       // We might want to make this conditional on a flag; it can sometimes be a bit of a nuisance.
@@ -179,16 +185,13 @@ public class BuildSummaryStatsModule extends BlazeModule {
           }
         }
       }
-      if (profileEvent != null && profileEvent.getProfilePath() != null) {
+      if (profileEvent != null && profileEvent.getProfile() != null) {
         // This leads to missing the afterCommand profiles of the other modules in the profile.
         // Since the BEP currently shuts down at the BuildCompleteEvent, we cannot just move posting
         // the BuildToolLogs to afterCommand of this module.
         try {
           Profiler.instance().stop();
-          event
-              .getResult()
-              .getBuildToolLogCollection()
-              .addLocalFile(profileEvent.getName(), profileEvent.getProfilePath());
+          profileEvent.getProfile().publish(event.getResult().getBuildToolLogCollection());
         } catch (IOException e) {
           reporter.handle(Event.error("Error while writing profile file: " + e.getMessage()));
         }
@@ -215,6 +218,7 @@ public class BuildSummaryStatsModule extends BlazeModule {
                     (now - commandStartMillis) / 1000.0,
                     overheadTime / 1000.0,
                     executionTime / 1000.0)));
+        logger.atInfo().log("Stats summary: %s", Joiner.on(", ").join(items));
       } else {
         reporter.handle(Event.info(Joiner.on(", ").join(items)));
         reporter.handle(Event.info(spawnSummaryString));

@@ -1027,6 +1027,7 @@ public abstract class CcModule
       Object userLinkFlagsObject,
       Object nonCodeInputsObject,
       Object extraLinkTimeLibraryObject,
+      Object ownerObject,
       StarlarkThread thread)
       throws EvalException {
     isCalledFromStarlarkCcCommon(thread);
@@ -1073,6 +1074,10 @@ public abstract class CcModule
       if (extraLinkTimeLibrary != null) {
         ccLinkingContextBuilder.setExtraLinkTimeLibraries(
             ExtraLinkTimeLibraries.builder().add(extraLinkTimeLibrary).build());
+      }
+      Label owner = convertFromNoneable(ownerObject, /* defaultValue= */ null);
+      if (owner != null) {
+        ccLinkingContextBuilder.setOwner(owner);
       }
 
       @SuppressWarnings("unchecked")
@@ -2647,10 +2652,7 @@ public abstract class CcModule
       StarlarkCallable buildLibraryFunc, Dict<String, Object> dataSetsMap, StarlarkThread thread)
       throws EvalException {
     isCalledFromStarlarkCcCommon(thread);
-    if (!isStarlarkCcCommonCalledFromBuiltins(thread)) {
-      throw Starlark.errorf(
-          "Cannot use experimental ExtraLinkTimeLibrary creation API outside of builtins");
-    }
+    checkPrivateStarlarkificationAllowlist(thread);
     boolean nonGlobalFunc = false;
     if (buildLibraryFunc instanceof StarlarkFunction fn) {
       if (fn.getModule().getGlobal(fn.getName()) != fn) {

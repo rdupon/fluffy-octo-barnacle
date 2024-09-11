@@ -41,6 +41,7 @@ import com.google.devtools.build.lib.analysis.OutputGroupInfo;
 import com.google.devtools.build.lib.analysis.RunfilesProvider;
 import com.google.devtools.build.lib.analysis.actions.SpawnAction;
 import com.google.devtools.build.lib.analysis.config.CompilationMode;
+import com.google.devtools.build.lib.analysis.config.InvalidConfigurationException;
 import com.google.devtools.build.lib.analysis.configuredtargets.RuleConfiguredTarget;
 import com.google.devtools.build.lib.analysis.test.InstrumentedFilesInfo;
 import com.google.devtools.build.lib.analysis.util.AnalysisMock;
@@ -62,8 +63,6 @@ import com.google.devtools.build.lib.rules.cpp.CcToolchainProvider;
 import com.google.devtools.build.lib.rules.cpp.CppCompileAction;
 import com.google.devtools.build.lib.rules.cpp.CppRuleClasses;
 import com.google.devtools.build.lib.rules.cpp.LibraryToLink;
-import com.google.devtools.build.lib.vfs.FileSystemUtils;
-import com.google.devtools.common.options.OptionsParsingException;
 import java.util.Collection;
 import java.util.List;
 import org.junit.Test;
@@ -782,12 +781,11 @@ public class ObjcLibraryTest extends ObjcRuleTestCase {
 
   @Test
   public void testIncludesDirs_inExternalRepo_resolvesSiblingLayout() throws Exception {
-    FileSystemUtils.appendIsoLatin1(
-        scratch.resolve("WORKSPACE"),
-        "local_repository(name = 'lib_external', path = 'lib_external')");
-    invalidatePackages();
-
-    scratch.file("lib_external/WORKSPACE");
+    scratch.appendFile(
+        "MODULE.bazel",
+        "bazel_dep(name='lib_external')",
+        "local_path_override(module_name = 'lib_external', path = 'lib_external')");
+    scratch.file("lib_external/MODULE.bazel", "module(name='lib_external')");
     scratch.file(
         "lib_external/BUILD",
         """
@@ -802,20 +800,19 @@ public class ObjcLibraryTest extends ObjcRuleTestCase {
         """);
     scratch.file("lib_external/a.m");
     scratch.file("lib_external/bar/b.h");
+    invalidatePackages();
 
     setBuildLanguageOptions("--experimental_sibling_repository_layout");
 
-    CommandAction compileAction = compileAction("@lib_external//:lib", "a.o");
+    CommandAction compileAction = compileAction("@@lib_external+//:lib", "a.o");
     String actionArgs = Joiner.on("").join(removeConfigFragment(compileAction.getArguments()));
 
-    assertThat(actionArgs).contains("-I../lib_external/bar");
+    assertThat(actionArgs).contains("-I../lib_external+/bar");
   }
 
   @Test
   public void testPropagatesDefinesToDependersTransitively() throws Exception {
-    useConfiguration(
-        "--apple_platform_type=ios",
-        "--platforms=" + MockObjcSupport.IOS_X86_64);
+    useConfiguration("--apple_platform_type=ios", "--platforms=" + MockObjcSupport.IOS_X86_64);
     createLibraryTargetWriter("//lib1:lib1")
         .setAndCreateFiles("srcs", "a.m")
         .setAndCreateFiles("non_arc_srcs", "b.m")
@@ -1109,8 +1106,9 @@ public class ObjcLibraryTest extends ObjcRuleTestCase {
 
   @Test
   public void testIosSdkVersionCannotBeDefinedButEmpty() {
-    OptionsParsingException e =
-        assertThrows(OptionsParsingException.class, () -> useConfiguration("--ios_sdk_version="));
+    var e =
+        assertThrows(
+            InvalidConfigurationException.class, () -> useConfiguration("--ios_sdk_version="));
     assertThat(e).hasMessageThat().contains("--ios_sdk_version");
   }
 
@@ -1530,8 +1528,8 @@ public class ObjcLibraryTest extends ObjcRuleTestCase {
     assertAppleSdkPlatformEnv(action, "iPhoneOS");
   }
 
-  private StructImpl getJ2ObjcInfoFromTarget(ConfiguredTarget configuredTarget, String providerName)
-      throws Exception {
+  private static StructImpl getJ2ObjcInfoFromTarget(
+      ConfiguredTarget configuredTarget, String providerName) throws Exception {
     Provider.Key key =
         new StarlarkProvider.Key(
             keyForBuiltins(Label.parseCanonical("@_builtins//:common/objc/providers.bzl")),

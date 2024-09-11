@@ -375,8 +375,8 @@ EOF
     --remote_download_toplevel \
     //a:foo >& $TEST_log || fail "Failed to build //a:foobar"
 
-  # Output of foo is missing, the generating action is re-executed
-  expect_log "2 processes: 1 remote cache hit, 1 internal."
+  # action "foo" is not re-executed.
+  expect_log "1 process: 1 internal."
 
   [[ -f bazel-bin/a/foo.txt ]] \
     || fail "Expected toplevel output bazel-bin/a/foo.txt to be downloaded"
@@ -841,6 +841,7 @@ EOF
     --remote_executor=grpc://localhost:${worker_port} \
     --remote_download_minimal \
     --build_event_text_file=$TEST_log \
+    --zip_undeclared_test_outputs \
     //a:foo || fail "Failed to test //a:foo"
 
   expect_log "test.log"
@@ -849,7 +850,7 @@ EOF
   expect_log "test.outputs_manifest__MANIFEST"
 }
 
-function test_nozip_undeclared_test_outputs() {
+function test_undeclared_test_outputs_unzipped() {
   mkdir -p a
   cat > a/test.sh << 'EOF'
 #!/bin/sh
@@ -867,11 +868,37 @@ EOF
   bazel test \
     --remote_executor=grpc://localhost:${worker_port} \
     --remote_download_toplevel \
-    --nozip_undeclared_test_outputs \
     //a:foo || fail "Failed to test //a:foo"
 
-  [[ -e "bazel-testlogs/a/foo/test.outputs/text.txt" ]] || fail "bazel-testlogs/a/foo/test.outputs/text.txt does not exist"
-  assert_contains "foo" "bazel-testlogs/a/foo/test.outputs/text.txt"
+  if ! [[ -e "bazel-testlogs/a/foo/test.outputs/text.txt" ]]; then
+    fail "bazel-testlogs/a/foo/test.outputs/text.txt does not exist"
+  fi
+}
+
+function test_undeclared_test_outputs_zipped() {
+  mkdir -p a
+  cat > a/test.sh << 'EOF'
+#!/bin/sh
+echo foo > "$TEST_UNDECLARED_OUTPUTS_DIR/text.txt"
+EOF
+  chmod +x a/test.sh
+
+  cat > a/BUILD <<'EOF'
+sh_test(
+  name = "foo",
+  srcs = ["test.sh"],
+)
+EOF
+
+  bazel test \
+    --remote_executor=grpc://localhost:${worker_port} \
+    --remote_download_toplevel \
+    --zip_undeclared_test_outputs \
+    //a:foo || fail "Failed to test //a:foo"
+
+  if ! [[ -e "bazel-testlogs/a/foo/test.outputs/outputs.zip" ]]; then
+    fail "bazel-testlogs/a/foo/test.outputs/outputs.zip does not exist"
+  fi
 }
 
 function test_multiple_test_attempts() {
@@ -2022,7 +2049,7 @@ EOF
       //a:bar >& $TEST_log || fail "Failed to build"
 
   expect_log 'Failed to fetch blobs because they do not exist remotely.'
-  expect_log "Found remote cache eviction error, retrying the build..."
+  expect_log "Found transient remote cache error, retrying the build..."
 
   local invocation_ids=$(grep "Invocation ID:" $TEST_log)
   local first_id=$(echo "$invocation_ids" | head -n 1)

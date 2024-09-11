@@ -347,6 +347,7 @@ java_test(
         "//src/test/java/com/google/devtools/build/lib/analysis/util",
         "//src/test/java/com/google/devtools/build/lib/buildtool/util",
         "//src/test/java/com/google/devtools/build/lib/testutil:JunitUtils",
+        "//src/test/java/com/google/devtools/build/lib/testutil:TestConstants",
         "//third_party:guava",
         "//third_party:guava-testlib",
         "//third_party:junit4",
@@ -486,6 +487,7 @@ java_test(
         "//src/main/protobuf:failure_details_java_proto",
         "//src/main/protobuf:invocation_policy_java_proto",
         "//src/test/java/com/google/devtools/build/lib/buildtool/util",
+        "//src/test/java/com/google/devtools/build/lib/testutil:TestConstants",
         "//src/test/java/com/google/devtools/build/lib/testutil:TestUtils",
         "//src/test/java/com/google/devtools/build/skyframe:testutil",
         "//third_party:guava",
@@ -636,14 +638,11 @@ build_test(
         ":CompileAfterOptionChangeTest",
         ":IncludeValidationTest",
         # Disabled in Google.
-        "//src/test/java/com/google/devtools/build/lib/bazel/rules/android:AndroidTests",
-        # Disabled in Google.
         "//src/test/java/com/google/devtools/build/lib/bazel/rules/python:PythonTests",
         # Disabled in Google.
         "//src/test/java/com/google/devtools/build/lib/bazel/rules/sh:ShTests",
         # Disabled in Google.
         "//src/test/java/com/google/devtools/build/lib/packages:BazelDocumentationTests",
-        "//src/test/java/com/google/devtools/build/lib/rules/android:AndroidDataBindingV2Test",
     ],
 )
 

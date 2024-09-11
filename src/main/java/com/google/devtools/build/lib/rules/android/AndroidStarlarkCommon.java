@@ -32,7 +32,6 @@ import com.google.devtools.build.lib.rules.java.JavaCompilationArgsProvider;
 import com.google.devtools.build.lib.rules.java.JavaInfo;
 import com.google.devtools.build.lib.starlarkbuildapi.android.AndroidIdeInfoProviderApi;
 import com.google.devtools.build.lib.starlarkbuildapi.android.AndroidSdkProviderApi;
-import com.google.devtools.build.lib.starlarkbuildapi.android.AndroidSplitTransitionApi;
 import com.google.devtools.build.lib.starlarkbuildapi.android.AndroidStarlarkCommonApi;
 import java.io.Serializable;
 import java.util.List;
@@ -49,11 +48,6 @@ public class AndroidStarlarkCommon
   @Override
   public String getSourceDirectoryRelativePathFromResource(Artifact resource) {
     return AndroidCommon.getSourceDirectoryRelativePathFromResource(resource).toString();
-  }
-
-  @Override
-  public AndroidSplitTransitionApi getAndroidSplitTransition() {
-    return AndroidSplitTransition.FACTORY;
   }
 
   /**
@@ -126,7 +120,7 @@ public class AndroidStarlarkCommon
             .addPlaceholderTreeArtifactExecPath("--output", outputTree)
             .add("--multidex=given_shard")
             .addAll(
-                DexArchiveAspect.mergerDexopts(
+                AndroidCommon.mergerDexopts(
                     ruleContext,
                     Iterables.filter(
                         dexopts, Predicates.not(Predicates.equalTo("--minimal-main-dex")))));

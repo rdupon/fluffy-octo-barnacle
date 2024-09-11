@@ -16,17 +16,18 @@ package com.google.devtools.build.lib.packages;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 
-import com.google.auto.value.AutoValue;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.devtools.build.lib.cmdline.PackageIdentifier;
+import com.google.common.collect.Lists;
+import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.packages.Package.Builder.MacroFrame;
 import com.google.devtools.build.lib.packages.TargetDefinitionContext.NameConflictException;
 import com.google.devtools.build.lib.server.FailureDetails.PackageLoading.Code;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import javax.annotation.Nullable;
@@ -54,24 +55,38 @@ public final class MacroClass {
    * <p>Of these, {@code name} is special cased as an actual attribute, and the rest do not exist.
    */
   // Keep in sync with `macro()`'s `attrs` user documentation in StarlarkRuleFunctionsApi.
+  // But we should avoid adding new entries here, since it's a backwards-incompatible change.
   public static final ImmutableSet<String> RESERVED_MACRO_ATTR_NAMES =
-      ImmutableSet.of("name", "visibility", "deprecation", "tags", "testonly", "features");
+      ImmutableSet.of("name", "visibility");
 
   private final String name;
+  private final Label definingBzlLabel;
   private final StarlarkFunction implementation;
   // Implicit attributes are stored under their given name ("_foo"), not a mangled name ("$foo").
   private final ImmutableMap<String, Attribute> attributes;
+  private final boolean isFinalizer;
 
   public MacroClass(
-      String name, StarlarkFunction implementation, ImmutableMap<String, Attribute> attributes) {
+      String name,
+      Label definingBzlLabel,
+      StarlarkFunction implementation,
+      ImmutableMap<String, Attribute> attributes,
+      boolean isFinalizer) {
     this.name = name;
+    this.definingBzlLabel = definingBzlLabel;
     this.implementation = implementation;
     this.attributes = attributes;
+    this.isFinalizer = isFinalizer;
   }
 
   /** Returns the macro's exported name. */
   public String getName() {
     return name;
+  }
+
+  /** Returns the label of the .bzl file where the macro was exported. */
+  public Label getDefiningBzlLabel() {
+    return definingBzlLabel;
   }
 
   public StarlarkFunction getImplementation() {
@@ -82,11 +97,21 @@ public final class MacroClass {
     return attributes;
   }
 
+  /**
+   * Returns whether this symbolic macro is a finalizer. All finalizers are run deferred to the end
+   * of the BUILD file's evaluation, rather than synchronously with their instantiation.
+   */
+  public boolean isFinalizer() {
+    return isFinalizer;
+  }
+
   /** Builder for {@link MacroClass}. */
   public static final class Builder {
     @Nullable private String name = null;
+    @Nullable private Label definingBzlLabel = null;
     private final StarlarkFunction implementation;
     private final ImmutableMap.Builder<String, Attribute> attributes = ImmutableMap.builder();
+    private boolean isFinalizer = false;
 
     public Builder(StarlarkFunction implementation) {
       this.implementation = implementation;
@@ -99,14 +124,32 @@ public final class MacroClass {
     }
 
     @CanIgnoreReturnValue
+    public Builder setDefiningBzlLabel(Label label) {
+      this.definingBzlLabel = label;
+      return this;
+    }
+
+    @CanIgnoreReturnValue
     public Builder addAttribute(Attribute attribute) {
       attributes.put(attribute.getName(), attribute);
       return this;
     }
 
+    @CanIgnoreReturnValue
+    public Builder setIsFinalizer() {
+      this.isFinalizer = true;
+      return this;
+    }
+
     public MacroClass build() {
       Preconditions.checkNotNull(name);
-      return new MacroClass(name, implementation, attributes.buildOrThrow());
+      Preconditions.checkNotNull(definingBzlLabel);
+      return new MacroClass(
+          name,
+          definingBzlLabel,
+          implementation,
+          attributes.buildOrThrow(),
+          /* isFinalizer= */ isFinalizer);
     }
   }
 
@@ -150,7 +193,8 @@ public final class MacroClass {
       }
 
       // Setting an attr to None is the same as omitting it (except that it's still an error to set
-      // an unknown attr to None).
+      // an unknown attr to None). If the attr is optional, skip adding it to the map now but put it
+      // in below when we realize it's missing.
       if (value == Starlark.NONE) {
         continue;
       }
@@ -175,7 +219,12 @@ public final class MacroClass {
       } else {
         // Already validated at schema creation time that the default is not a computed default or
         // late-bound default
-        attrValues.put(attr.getName(), attr.getDefaultValueUnchecked());
+        Object defaultValue = attr.getDefaultValueUnchecked();
+        if (defaultValue == null) {
+          // Null values can occur for some types of attributes (e.g. LabelType).
+          defaultValue = Starlark.NONE;
+        }
+        attrValues.put(attr.getName(), defaultValue);
       }
     }
 
@@ -183,18 +232,22 @@ public final class MacroClass {
     // passed instead of label, ensure values are immutable.)
     for (Map.Entry<String, Object> entry : ImmutableMap.copyOf(attrValues).entrySet()) {
       String attrName = entry.getKey();
-      Attribute attribute = attributes.get(attrName);
-      Object normalizedValue =
-          // copyAndLiftStarlarkValue ensures immutability.
-          BuildType.copyAndLiftStarlarkValue(
-              name, attribute, entry.getValue(), pkgBuilder.getLabelConverter());
-      // TODO(#19922): Validate that LABEL_LIST type attributes don't contain duplicates, to match
-      // the behavior of rules. This probably requires factoring out logic from
-      // AggregatingAttributeMapper.
-      if (attribute.isConfigurable() && !(normalizedValue instanceof SelectorList)) {
-        normalizedValue = SelectorList.wrapSingleValue(normalizedValue);
+      Object value = entry.getValue();
+      // Skip auto-populated `None`s. They are not type-checked or lifted to select()s.
+      if (value != Starlark.NONE) {
+        Attribute attribute = attributes.get(attrName);
+        Object normalizedValue =
+            // copyAndLiftStarlarkValue ensures immutability.
+            BuildType.copyAndLiftStarlarkValue(
+                name, attribute, value, pkgBuilder.getLabelConverter());
+        // TODO(#19922): Validate that LABEL_LIST type attributes don't contain duplicates, to match
+        // the behavior of rules. This probably requires factoring out logic from
+        // AggregatingAttributeMapper.
+        if (attribute.isConfigurable() && !(normalizedValue instanceof SelectorList)) {
+          normalizedValue = SelectorList.wrapSingleValue(normalizedValue);
+        }
+        attrValues.put(attrName, normalizedValue);
       }
-      attrValues.put(attrName, normalizedValue);
     }
 
     // Type and existence enforced by RuleClass.NAME_ATTRIBUTE.
@@ -207,7 +260,7 @@ public final class MacroClass {
             ? 1
             : parentMacroFrame.macroInstance.getSameNameDepth() + 1;
 
-    return new MacroInstance(this, attrValues, sameNameDepth);
+    return pkgBuilder.createMacro(this, attrValues, sameNameDepth);
   }
 
   /**
@@ -240,6 +293,21 @@ public final class MacroClass {
   public static void executeMacroImplementation(
       MacroInstance macro, Package.Builder builder, StarlarkSemantics semantics)
       throws InterruptedException {
+    // Ensure we're not expanding a (possibly indirect) recursive macro. This is morally analogous
+    // to StarlarkThread#isRecursiveCall, except in this context, recursion is through the chain of
+    // macro instantiations, which may or may not actually be concurrently executing on the stack
+    // depending on whether the evaluation is eager or deferred.
+    @Nullable String recursionMsg = getRecursionErrorMessage(macro);
+    if (recursionMsg != null) {
+      builder
+          .getLocalEventHandler()
+          .handle(Package.error(/* location= */ null, recursionMsg, Code.STARLARK_EVAL_ERROR));
+      builder.setContainsErrors();
+      // Don't try to evaluate this macro again.
+      builder.markMacroComplete(macro);
+      return;
+    }
+
     try (Mutability mu =
         Mutability.create("macro", builder.getPackageIdentifier(), macro.getName())) {
       StarlarkThread thread =
@@ -248,7 +316,8 @@ public final class MacroClass {
               semantics,
               /* contextDescription= */ "",
               SymbolGenerator.create(
-                  MacroClassId.create(builder.getPackageIdentifier(), macro.getName())));
+                  MacroInstance.UniqueId.create(
+                      macro.getPackage().getPackageIdentifier(), macro.getId())));
       thread.setPrintHandler(Event.makeDebugPrintHandler(builder.getLocalEventHandler()));
 
       // TODO: #19922 - Technically the embedded SymbolGenerator field should use a different key
@@ -280,18 +349,60 @@ public final class MacroClass {
         // Restore the previously running symbolic macro's state (if any).
         @Nullable MacroFrame top = builder.setCurrentMacroFrame(parentMacroFrame);
         Preconditions.checkState(top == childMacroFrame, "inconsistent macro stack state");
+        // Mark the macro as having completed, even if it was in error (or interrupted?).
+        builder.markMacroComplete(macro);
       }
     }
   }
 
-  @AutoValue
-  abstract static class MacroClassId {
-    static MacroClassId create(PackageIdentifier id, String name) {
-      return new AutoValue_MacroClass_MacroClassId(id, name);
+  /**
+   * If the instantiation of {@code macro} was recursive, i.e. if it was transitively declared by
+   * another macro instance having the same macro class, then returns an error string identifying
+   * this macro's name and a "traceback" of the instantiating macros. Otherwise, returns null.
+   */
+  @Nullable
+  private static String getRecursionErrorMessage(MacroInstance macro) {
+    MacroInstance ancestor = macro.getParent();
+    boolean foundRecursion = false;
+    boolean onImmediateParent = true;
+    while (ancestor != null) {
+      // TODO: #19922 - We're checking based on object identity here. If we need to worry about
+      // macro classes being serialized and deserialized in a context that also does macro
+      // evaluation, then we should use the more durable identifier of its definition label + name.
+      if (ancestor.getMacroClass() == macro.getMacroClass()) {
+        foundRecursion = true;
+        break;
+      }
+      ancestor = ancestor.getParent();
+      onImmediateParent = false;
+    }
+    if (!foundRecursion) {
+      return null;
     }
 
-    abstract PackageIdentifier packageId();
+    StringBuilder msg = new StringBuilder();
+    msg.append(
+        String.format(
+            "macro '%s' is %s recursive call of '%s'. Macro instantiation traceback (most"
+                + " recent call last):",
+            macro.getName(), onImmediateParent ? "a direct" : "an indirect", ancestor.getName()));
 
-    abstract String name();
+    // Materialize the stack as an ArrayList, since we want to output it in reverse order (outermost
+    // first).
+    ArrayList<MacroInstance> allAncestors = new ArrayList<>();
+    ancestor = macro;
+    while (ancestor != null) {
+      allAncestors.add(ancestor);
+      ancestor = ancestor.getParent();
+    }
+    for (MacroInstance item : Lists.reverse(allAncestors)) {
+      String pkg = item.getPackage().getPackageIdentifier().getCanonicalForm();
+      String type =
+          item.getMacroClass().getDefiningBzlLabel().getCanonicalForm()
+              + "%"
+              + item.getMacroClass().getName();
+      msg.append(String.format("\n\tPackage %s, macro '%s' of type %s", pkg, item.getName(), type));
+    }
+    return msg.toString();
   }
 }

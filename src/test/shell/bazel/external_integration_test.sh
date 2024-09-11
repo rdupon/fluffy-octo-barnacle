@@ -1110,22 +1110,6 @@ EOF
   assert_contains "def" bazel-genfiles/external/+_repo_rules+x/catter.out
 }
 
-function test_android_sdk_basic_load() {
-  cat >> WORKSPACE <<'EOF' || fail "Couldn't cat"
-android_sdk_repository(
-    name = "androidsdk",
-    path = "/fake/path",
-    api_level = 23,
-    build_tools_version="23.0.0"
-)
-EOF
-
-  bazel query --enable_workspace "//external:androidsdk" 2> "$TEST_log" > "$TEST_TMPDIR/queryout" \
-      || fail "Expected success"
-  cat "$TEST_TMPDIR/queryout" > "$TEST_log"
-  expect_log "//external:androidsdk"
-}
-
 function test_use_bind_as_repository() {
   cat > WORKSPACE <<'EOF'
 load("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
@@ -1323,6 +1307,20 @@ EOF
   expect_log "Error downloading \\[http://127.0.0.1:$fileserver_port/repo.zip\\] to"
   # Bazel translates the integrity value back to the sha256 checksum.
   expect_log "Checksum was $integrity but wanted sha256-Yab3Yqr2BlLL8zKHm43MLP2BviEpoGHalX0Dnq538LA="
+  shutdown_server
+}
+
+function test_integrity_ill_formed_base64() {
+  cat > $(setup_module_dot_bazel) <<EOF
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(
+    name = "repo",
+    integrity = "sha256-Yab3Yqr2BlLL8zKHm43MLP2BviEpoGHalX0Dnq538L=",
+    url = "file:///dev/null",
+)
+EOF
+  bazel build @repo//... &> $TEST_log 2>&1 && fail "Expected to fail"
+  expect_log "Invalid base64 'Yab3Yqr2BlLL8zKHm43MLP2BviEpoGHalX0Dnq538L='"
   shutdown_server
 }
 
@@ -2696,7 +2694,7 @@ EOF
 
   mkdir main
   cd main
-  cat > foo.bzl <<'EOF'
+  cat > foo.bzl <<EOF
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def foo():
@@ -2706,7 +2704,7 @@ def foo():
     build_file = "@b//:a.BUILD",
   )
 EOF
-  cat > bar.bzl <<'EOF'
+  cat > bar.bzl <<EOF
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def bar():
@@ -3034,6 +3032,50 @@ EOF
     || fail 'Expected build to succeed with Skymeld'
 
   test -h "$execroot/external/+_repo_rules+ext" || fail "Expected symlink to external repo."
+}
+
+function test_default_canonical_id_enabled() {
+    cat > repo.bzl <<EOF
+load("@bazel_tools//tools/build_defs/repo:cache.bzl", "get_default_canonical_id")
+
+def _impl(rctx):
+  print("canonical_id", repr(get_default_canonical_id(rctx, ["url-1", "url-2"])))
+  rctx.file("BUILD", "")
+
+dummy_repository = repository_rule(_impl)
+EOF
+  touch BUILD
+  cat > MODULE.bazel <<EOF
+dummy_repository = use_repo_rule('//:repo.bzl', 'dummy_repository')
+dummy_repository(name = 'foo')
+EOF
+
+  # NOTE: Test environment modifies defaults, so --repo_env must be explicitly set
+  bazel query @foo//:all --repo_env=BAZEL_HTTP_RULES_URLS_AS_DEFAULT_CANONICAL_ID=1 \
+    2>$TEST_log || fail 'Expected fetch to succeed'
+  expect_log "canonical_id \"url-1 url-2\""
+}
+
+function test_default_canonical_id_disabled() {
+    cat > repo.bzl <<EOF
+load("@bazel_tools//tools/build_defs/repo:cache.bzl", "get_default_canonical_id")
+
+def _impl(rctx):
+  print("canonical_id", repr(get_default_canonical_id(rctx, ["url-1", "url-2"])))
+  rctx.file("BUILD", "")
+
+dummy_repository = repository_rule(_impl)
+EOF
+  touch BUILD
+  cat > MODULE.bazel <<EOF
+dummy_repository = use_repo_rule('//:repo.bzl', 'dummy_repository')
+dummy_repository(name = 'foo')
+EOF
+
+  # NOTE: Test environment modifies defaults, so --repo_env must be explicitly set
+  bazel query @foo//:all --repo_env=BAZEL_HTTP_RULES_URLS_AS_DEFAULT_CANONICAL_ID=0 \
+    2>$TEST_log || fail 'Expected fetch to succeed'
+  expect_log "canonical_id \"\""
 }
 
 function test_environ_incrementally() {

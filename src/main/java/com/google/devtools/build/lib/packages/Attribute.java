@@ -186,6 +186,12 @@ public final class Attribute implements Comparable<Attribute> {
 
     /** Whether to run the transitive validation actions from this attribute. */
     SKIP_VALIDATIONS,
+
+    /**
+     * Whether the attribute is available during dependency resolution. If set, only rules also m
+     * arked as such can be referenced through this attribute.
+     */
+    FOR_DEPENDENCY_RESOLUTION,
   }
 
   /** A predicate class to check if the value of the attribute comes from a predefined set. */
@@ -1530,7 +1536,12 @@ public final class Attribute implements Comparable<Attribute> {
     }
 
     @Override
-    public ValueT resolve(Rule rule, AttributeMap attributes, FragmentT input) {
+    public ValueT resolve(
+        Rule rule,
+        AttributeMap attributes,
+        @Nullable FragmentT input,
+        @Nullable Object ctx,
+        @Nullable EventHandler eventHandler) {
       return resolver.resolve(rule, attributes, input);
     }
   }
@@ -1591,7 +1602,8 @@ public final class Attribute implements Comparable<Attribute> {
       return (LateBoundDefault<Void, ValueT>) AlwaysNullLateBoundDefault.INSTANCE;
     }
 
-    LateBoundDefault(Class<FragmentT> fragmentClass, Function<Rule, ValueT> defaultValueEvaluator) {
+    protected LateBoundDefault(
+        Class<FragmentT> fragmentClass, Function<Rule, ValueT> defaultValueEvaluator) {
       this.defaultValueEvaluator = defaultValueEvaluator;
       this.fragmentClass = fragmentClass;
     }
@@ -1624,8 +1636,16 @@ public final class Attribute implements Comparable<Attribute> {
      * @param rule the rule being evaluated
      * @param attributes interface for retrieving the values of the rule's other attributes
      * @param input the configuration fragment to evaluate with
+     * @param ctx a context object that may be used to evaluate the attribute
+     * @param eventHandler an event handler where messages from the evaluation are reported
      */
-    public abstract ValueT resolve(Rule rule, AttributeMap attributes, FragmentT input);
+    public abstract ValueT resolve(
+        Rule rule,
+        AttributeMap attributes,
+        @Nullable FragmentT input,
+        @Nullable Object ctx,
+        @Nullable EventHandler eventHandler)
+        throws InterruptedException, EvalException;
   }
 
   /**
@@ -1774,7 +1794,7 @@ public final class Attribute implements Comparable<Attribute> {
   // 5. defaultValue instanceof LateBoundDefault &&
   //    type.isValid(defaultValue.getDefault(configuration))
   // (We assume a hypothetical Type.isValid(Object) predicate.)
-  private final Object defaultValue;
+  @Nullable private final Object defaultValue;
 
   private final TransitionFactory<AttributeTransitionData> transitionFactory;
 
@@ -1916,6 +1936,18 @@ public final class Attribute implements Comparable<Attribute> {
   /** Returns true if this label type parameter is checked by silent ruleclass filtering. */
   public boolean isSilentRuleClassFilter() {
     return getPropertyFlag(PropertyFlag.SILENT_RULECLASS_FILTER);
+  }
+
+  /**
+   * Returns whether the dependencies through this attribute are accessible during dependency
+   * resolution.
+   *
+   * <p>Only makes sense for attributes where {@code getType().getLabelClass()} is {@code
+   * DEPENDENCY}. Non-dependency attributes (non-label ones and label ones with a different label
+   * class) are always accessible during dependency resolution.
+   */
+  public boolean isForDependencyResolution() {
+    return getPropertyFlag(PropertyFlag.FOR_DEPENDENCY_RESOLUTION);
   }
 
   public boolean skipValidations() {
@@ -2140,6 +2172,7 @@ public final class Attribute implements Comparable<Attribute> {
    * Returns the default value of this attribute, even if it is a computed default, or a late-bound
    * default.
    */
+  @Nullable
   public Object getDefaultValueUnchecked() {
     return defaultValue;
   }
